@@ -1,0 +1,37 @@
+name: Flutter quality gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  analyze-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.5
+      - run: flutter pub get
+      - name: Enforce Dart file length policy
+        run: dart run tool/check_file_lengths.dart
+      - name: Verify screen data bindings
+        run: dart run tool/check_screen_bindings.dart
+      - name: Enforce SQLite singleton policy
+        run: dart run tool/check_sqlite_singleton.dart
+      - name: Analyze source
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Run tests with coverage
+        run: flutter test --coverage --concurrency=1
+      - name: Build local-only Web review
+        run: >-
+          flutter build web --release
+          --dart-define=WASEL_WEB_REVIEW=true
+          --dart-define=WASEL_LOCAL_ONLY=true
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-coverage
+          path: coverage/lcov.info

@@ -1,0 +1,40 @@
+name: Android release gate
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['release-*']
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.5'
+      - run: flutter pub get
+      - name: Reject placeholder Android identity
+        run: |
+          ! grep -Rqs 'com.example.wasel' android/app/build.gradle.kts android/app/src/main
+      - run: flutter analyze
+      - run: flutter test
+      - name: Configure signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEY_PROPERTIES: ${{ secrets.ANDROID_KEY_PROPERTIES }}
+        run: |
+          test -n "$KEYSTORE_BASE64" || (echo 'Missing ANDROID_KEYSTORE_BASE64' && exit 1)
+          test -n "$KEY_PROPERTIES" || (echo 'Missing ANDROID_KEY_PROPERTIES' && exit 1)
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/upload-keystore.jks
+          printf '%s' "$KEY_PROPERTIES" > android/key.properties
+      - name: Build signed APK
+        env:
+          WASEL_SYNC_ENDPOINT: ${{ secrets.WASEL_SYNC_ENDPOINT }}
+          WASEL_CLIENT_ID: ${{ secrets.WASEL_CLIENT_ID }}
+        run: flutter build apk --release --dart-define=WASEL_LOCAL_ONLY=false --dart-define=WASEL_FLAVOR=production --dart-define=WASEL_SYNC_ENDPOINT="$WASEL_SYNC_ENDPOINT" --dart-define=WASEL_CLIENT_ID="$WASEL_CLIENT_ID"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wasel-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
