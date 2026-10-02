@@ -32,12 +32,18 @@ void main() {
   }
 
   Future<void> openChart(
-      WidgetTester tester, AccountingRepository repository) async {
+    WidgetTester tester,
+    AccountingRepository repository, {
+    Future<void> Function()? onOpenReports,
+    Future<void> Function()? onShowAudit,
+  }) async {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: AccountingWorkspaceScreen(
           key: ValueKey('account-chart-${chartInstance++}'),
           repository: repository,
+          onOpenReports: onOpenReports,
+          onShowAudit: onShowAudit,
         ),
       ),
     ));
@@ -97,9 +103,26 @@ void main() {
   testWidgets('account chart CRUD and validation use real SQLite',
       (tester) async {
     final repository = AccountingRepository();
+    var reportsOpened = false;
+    var auditOpened = false;
 
     // Add, persist, refresh, and search.
-    await openChart(tester, repository);
+    await openChart(
+      tester,
+      repository,
+      onOpenReports: () async {
+        reportsOpened = true;
+      },
+      onShowAudit: () async {
+        auditOpened = true;
+      },
+    );
+    await tester.tap(find.text('التقارير'));
+    await tester.pump();
+    expect(reportsOpened, isTrue);
+    await tester.tap(find.text('سجل التدقيق'));
+    await tester.pump();
+    expect(auditOpened, isTrue);
     await enterAccount(tester, '1300', 'حساب الاختبار التفاعلي');
     await tester.runAsync(() async {
       expect(await repository.accountByCode('1300'), isNotNull);

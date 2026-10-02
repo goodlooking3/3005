@@ -8,10 +8,8 @@ import 'core/models.dart';
 import 'core/production_config.dart';
 import 'data/local_database.dart';
 import 'data/accounting_repository.dart';
-import 'data/currency_repository.dart';
 import 'services/auth_service.dart';
 import 'services/secure_backup_service.dart';
-import 'services/account_import_service.dart';
 import 'core/design_system.dart';
 import 'features/connectors/presentation/connector_center_screen.dart';
 import 'features/connectors/domain/connector_item.dart';
@@ -50,12 +48,12 @@ class WaselApp extends StatelessWidget {
   const WaselApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        title: 'واصل',
-        theme: waselTheme(),
-        home: const Directionality(
-          textDirection: TextDirection.rtl,
-          child: AuthGate(),
-        ),
-      );
+    debugShowCheckedModeBanner: false,
+    title: 'واصل',
+    theme: waselTheme(),
+    home: const Directionality(
+      textDirection: TextDirection.rtl,
+      child: AuthGate(),
+    ),
+  );
 }

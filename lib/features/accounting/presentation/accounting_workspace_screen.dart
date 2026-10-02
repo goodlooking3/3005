@@ -11,7 +11,14 @@ import 'voucher_editor_dialog.dart';
 
 class AccountingWorkspaceScreen extends StatefulWidget {
   final AccountingRepository repository;
-  const AccountingWorkspaceScreen({super.key, required this.repository});
+  final Future<void> Function()? onOpenReports;
+  final Future<void> Function()? onShowAudit;
+  const AccountingWorkspaceScreen({
+    super.key,
+    required this.repository,
+    this.onOpenReports,
+    this.onShowAudit,
+  });
   @override
   State<AccountingWorkspaceScreen> createState() =>
       _AccountingWorkspaceScreenState();
@@ -115,25 +122,56 @@ class _AccountingWorkspaceScreenState extends State<AccountingWorkspaceScreen>
   @override
   Widget build(BuildContext context) =>
       Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          const Expanded(
-              child: Text('المحاسبة والحسابات',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800))),
-          IconButton(
+        LayoutBuilder(builder: (context, constraints) {
+          final heading = const Text('المحاسبة والحسابات',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800));
+          final refresh = IconButton(
               onPressed: _load,
               tooltip: 'تحديث',
-              icon: const Icon(Icons.refresh)),
-          FilledButton.icon(
+              icon: const Icon(Icons.refresh));
+          final receipt = FilledButton.icon(
               onPressed: () => _voucherEditor(VoucherType.receipt),
               icon: const Icon(Icons.add_card),
-              label: const Text('سند قبض')),
-          const SizedBox(width: 8),
-          OutlinedButton.icon(
+              label: const Text('سند قبض'));
+          final payment = OutlinedButton.icon(
               onPressed: () => _voucherEditor(VoucherType.payment),
               icon: const Icon(Icons.payments_outlined),
-              label: const Text('سند صرف'))
-        ]),
+              label: const Text('سند صرف'));
+          final reports = OutlinedButton.icon(
+              onPressed: widget.onOpenReports,
+              icon: const Icon(Icons.assessment_outlined),
+              label: const Text('التقارير'));
+          final audit = OutlinedButton.icon(
+              onPressed: widget.onShowAudit,
+              icon: const Icon(Icons.fact_check_outlined),
+              label: const Text('سجل التدقيق'));
+          if (constraints.maxWidth < 1024) {
+            return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(children: [Expanded(child: heading), refresh]),
+                  const SizedBox(height: 8),
+                  Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [receipt, payment, reports, audit]),
+                ]);
+          }
+          return Row(children: [
+            Expanded(child: heading),
+            refresh,
+            receipt,
+            const SizedBox(width: 8),
+            payment,
+            const SizedBox(width: 8),
+            reports,
+            const SizedBox(width: 8),
+            audit,
+          ]);
+        }),
         const SizedBox(height: 12),
+        if (summary != null) _summaryStrip(),
+        if (summary != null) const SizedBox(height: 12),
         if (error != null)
           Card(
               color: Colors.red.shade50,
@@ -142,78 +180,155 @@ class _AccountingWorkspaceScreenState extends State<AccountingWorkspaceScreen>
         if (loading) const LinearProgressIndicator(),
         const SizedBox(height: 8),
         Expanded(
-            child: Card(
-                clipBehavior: Clip.antiAlias,
-                child: Column(children: [
-                  TabBar(controller: _tabs, tabs: const [
-                    Tab(
-                        icon: Icon(Icons.account_tree_outlined),
-                        text: 'دليل الحسابات'),
-                    Tab(
-                        icon: Icon(Icons.receipt_long_outlined),
-                        text: 'السندات والقيود'),
-                    Tab(icon: Icon(Icons.people_alt_outlined), text: 'الأطراف')
-                  ]),
-                  Expanded(
-                      child: TabBarView(controller: _tabs, children: [
+          child: Card(
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                TabBar(controller: _tabs, tabs: const [
+                  Tab(
+                      icon: Icon(Icons.account_tree_outlined),
+                      text: 'دليل الحسابات'),
+                  Tab(
+                      icon: Icon(Icons.receipt_long_outlined),
+                      text: 'السندات والقيود'),
+                  Tab(icon: Icon(Icons.people_alt_outlined), text: 'الأطراف')
+                ]),
+                Expanded(
+                  child: TabBarView(controller: _tabs, children: [
                     _accountsTab(),
                     _vouchersTab(),
-                    _partiesTab()
-                  ]))
-                ]))),
+                    _partiesTab(),
+                  ]),
+                ),
+              ],
+            ),
+          ),
+        ),
       ]);
+
+  Widget _summaryStrip() {
+    final current = summary;
+    if (current == null) return const SizedBox.shrink();
+    Widget metric(String label, String value, String detail, IconData icon,
+            Color color) =>
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: .06),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withValues(alpha: .18)),
+          ),
+          child: Row(children: [
+            Icon(icon, color: color, size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label,
+                        style: TextStyle(
+                            color: Colors.blueGrey.shade600, fontSize: 12)),
+                    const SizedBox(height: 3),
+                    Text(value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 17)),
+                    Text(detail,
+                        style: TextStyle(
+                            color: Colors.blueGrey.shade500, fontSize: 11)),
+                  ]),
+            ),
+          ]),
+        );
+    final cards = <Widget>[
+      metric('الرصيد النقدي', current.cashBalance.toStringAsFixed(2),
+          'ريال سعودي', Icons.account_balance_wallet_outlined, Colors.blue),
+      metric('الرصيد البنكي', current.bankBalance.toStringAsFixed(2),
+          'ريال سعودي', Icons.account_balance_outlined, Colors.green),
+      metric('القيود المسجلة', '${current.vouchersCount}', 'قيد وسند',
+          Icons.receipt_long_outlined, Colors.orange),
+    ];
+    return LayoutBuilder(builder: (context, constraints) {
+      if (constraints.maxWidth >= 720) {
+        return Row(children: [
+          for (var index = 0; index < cards.length; index++) ...[
+            Expanded(child: cards[index]),
+            if (index < cards.length - 1) const SizedBox(width: 12),
+          ],
+        ]);
+      }
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: [
+          for (var index = 0; index < cards.length; index++) ...[
+            SizedBox(width: 208, child: cards[index]),
+            if (index < cards.length - 1) const SizedBox(width: 10),
+          ],
+        ]),
+      );
+    });
+  }
 
   Widget _accountsTab() {
     final nodes = flattenAccountTree(chart.accounts, expanded: chart.expanded);
-    return Column(children: [
-      Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-          child: Wrap(spacing: 8, runSpacing: 8, children: [
-            SizedBox(
-                width: 260,
-                child: TextField(
-                    decoration: InputDecoration(
-                        hintText: accountSearchHint(),
-                        prefixIcon: const Icon(Icons.search)),
-                    onChanged: chart.setQuery)),
-            DropdownButton<AccountKind?>(
-                value: chart.kind,
-                hint: const Text('كل الأنواع'),
-                items: [
-                  const DropdownMenuItem<AccountKind?>(
-                      value: null, child: Text('كل الأنواع')),
-                  ...AccountKind.values.map((kind) => DropdownMenuItem(
-                      value: kind, child: Text(accountKindLabel(kind))))
-                ],
-                onChanged: chart.setKind),
-            FilterChip(
-                label: const Text('إظهار المتوقفة'),
-                selected: chart.includeInactive,
-                onSelected: chart.setIncludeInactive),
-            OutlinedButton.icon(
-                onPressed: () => _accountEditor(),
-                icon: const Icon(Icons.add),
-                label: const Text('إضافة حساب')),
-            OutlinedButton.icon(
-                onPressed: _directoryTransfer,
-                icon: const Icon(Icons.import_export),
-                label: const Text('استيراد / تصدير XLSX')),
-          ])),
-      Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: Row(children: [
-            Expanded(
-                child: Text('${accountCountLabel(nodes.length)} • دليل هرمي',
-                    style: const TextStyle(fontWeight: FontWeight.bold))),
-            Text('النقدية ${summary?.cashBalance.toStringAsFixed(2) ?? '0.00'}')
-          ])),
-      Expanded(
-          child: nodes.isEmpty
-              ? Center(child: Text(accountEmptyMessage()))
-              : ListView.builder(
-                  padding: const EdgeInsets.all(8),
-                  itemCount: nodes.length,
-                  itemBuilder: (context, index) => _accountTile(nodes[index]))),
+    return CustomScrollView(slivers: [
+      SliverToBoxAdapter(
+          child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+              child: Wrap(spacing: 8, runSpacing: 8, children: [
+                SizedBox(
+                    width: 260,
+                    child: TextField(
+                        decoration: InputDecoration(
+                            hintText: accountSearchHint(),
+                            prefixIcon: const Icon(Icons.search)),
+                        onChanged: chart.setQuery)),
+                DropdownButton<AccountKind?>(
+                    value: chart.kind,
+                    hint: const Text('كل الأنواع'),
+                    items: [
+                      const DropdownMenuItem<AccountKind?>(
+                          value: null, child: Text('كل الأنواع')),
+                      ...AccountKind.values.map((kind) => DropdownMenuItem(
+                          value: kind, child: Text(accountKindLabel(kind))))
+                    ],
+                    onChanged: chart.setKind),
+                FilterChip(
+                    label: const Text('إظهار المتوقفة'),
+                    selected: chart.includeInactive,
+                    onSelected: chart.setIncludeInactive),
+                OutlinedButton.icon(
+                    onPressed: () => _accountEditor(),
+                    icon: const Icon(Icons.add),
+                    label: const Text('إضافة حساب')),
+                OutlinedButton.icon(
+                    onPressed: _directoryTransfer,
+                    icon: const Icon(Icons.import_export),
+                    label: const Text('استيراد / تصدير XLSX')),
+              ]))),
+      SliverToBoxAdapter(
+          child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Row(children: [
+                Expanded(
+                    child: Text(
+                        '${accountCountLabel(nodes.length)} • دليل هرمي',
+                        style: const TextStyle(fontWeight: FontWeight.bold))),
+                Text(
+                    'النقدية ${summary?.cashBalance.toStringAsFixed(2) ?? '0.00'}')
+              ]))),
+      if (nodes.isEmpty)
+        SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(child: Text(accountEmptyMessage())))
+      else
+        SliverPadding(
+            padding: const EdgeInsets.all(8),
+            sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                    (context, index) => _accountTile(nodes[index]),
+                    childCount: nodes.length))),
     ]);
   }
 

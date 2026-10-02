@@ -13,8 +13,12 @@ class _ConnectionStatusPill extends StatelessWidget {
             ? 'محلي • SQLite'
             : configured
                 ? 'إعداد مزامنة'
-                : 'متصل بدون مزامنة';
-    final icon = local ? Icons.offline_bolt_rounded : Icons.cloud_queue_rounded;
+                : 'لا يوجد خادم';
+    final icon = local
+        ? Icons.offline_bolt_rounded
+        : configured
+            ? Icons.cloud_sync_rounded
+            : Icons.cloud_off_rounded;
     final color = local ? WaselColors.success : WaselColors.primary;
     return Semantics(
       label: 'حالة التشغيل: $label',
@@ -31,9 +35,14 @@ class _ConnectionStatusPill extends StatelessWidget {
           children: [
             Icon(icon, size: 16, color: color),
             const SizedBox(width: 6),
-            Text(label,
-                style: TextStyle(
-                    color: color, fontWeight: FontWeight.w700, fontSize: 12)),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
           ],
         ),
       ),
@@ -49,7 +58,6 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int selected = 0;
-  bool showAccountingWorkspace = false;
   bool sidebarExpanded = true;
   final Set<int> favorites = {0, 1, 2};
   String displayName = 'المستخدم';
@@ -61,7 +69,6 @@ class _HomeShellState extends State<HomeShell> {
   late final AccountingReportsController accountingReportsController;
   late final WalletProvider walletProvider;
   List<Account> liveAccounts = [];
-  FinancialSummary? financialSummary;
   String archiveQuery = '';
   String archiveSource = 'الكل';
   final entries = <Remittance>[];
@@ -91,13 +98,7 @@ class _HomeShellState extends State<HomeShell> {
   Future<void> _hydrateAccounting() async {
     await accounting.seedDefaultAccounts();
     final accounts = await accounting.accounts();
-    final summary = await accounting.summary();
-    if (mounted) {
-      setState(() {
-        liveAccounts = accounts;
-        financialSummary = summary;
-      });
-    }
+    if (mounted) setState(() => liveAccounts = accounts);
   }
 
   Future<void> _hydrateEntries() => _hydratePersistentEntries();
@@ -374,200 +375,12 @@ class _HomeShellState extends State<HomeShell> {
         ],
       );
 
-  Widget _accountingPage() => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: TextButton.icon(
-              onPressed: () => setState(
-                () => showAccountingWorkspace = !showAccountingWorkspace,
-              ),
-              icon: Icon(
-                showAccountingWorkspace
-                    ? Icons.arrow_back_rounded
-                    : Icons.account_tree_outlined,
-              ),
-              label: Text(
-                showAccountingWorkspace
-                    ? 'العودة إلى ملخص الحسابات'
-                    : 'فتح دليل الحسابات',
-              ),
-            ),
-          ),
-          Expanded(
-            child: showAccountingWorkspace
-                ? AccountingWorkspaceScreen(repository: accounting)
-                : _accountsPage(),
-          ),
-        ],
+  Widget _accountingPage() => AccountingWorkspaceScreen(
+        repository: accounting,
+        onOpenReports: _openAccountingReports,
+        onShowAudit: _showAudit,
       );
 
-  Widget _accountsPage() => SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final cards = <Widget>[
-                  _accountHero(
-                    'الرصيد النقدي',
-                    (financialSummary?.cashBalance ?? 0).toStringAsFixed(0),
-                    'ريال سعودي',
-                    Icons.account_balance_wallet_rounded,
-                    const Color(0xFF315CFF),
-                  ),
-                  _accountHero(
-                    'الرصيد البنكي',
-                    (financialSummary?.bankBalance ?? 0).toStringAsFixed(0),
-                    'ريال سعودي',
-                    Icons.account_balance_rounded,
-                    const Color(0xFF079455),
-                  ),
-                  _accountHero(
-                    'القيود المسجلة',
-                    (financialSummary?.vouchersCount ?? 0).toString(),
-                    'قيد وسند',
-                    Icons.insights_rounded,
-                    const Color(0xFFF79009),
-                  ),
-                ];
-                if (constraints.maxWidth < 760) {
-                  return Column(
-                    children: [
-                      for (var index = 0; index < cards.length; index++) ...[
-                        SizedBox(width: double.infinity, child: cards[index]),
-                        if (index < cards.length - 1)
-                          const SizedBox(height: 12),
-                      ],
-                    ],
-                  );
-                }
-                return Row(
-                  children: [
-                    for (var index = 0; index < cards.length; index++)
-                      Expanded(
-                        child: Padding(
-                          padding: EdgeInsetsDirectional.only(
-                            end: index < cards.length - 1 ? 14 : 0,
-                          ),
-                          child: cards[index],
-                        ),
-                      ),
-                  ],
-                );
-              },
-            ),
-            const SizedBox(height: 18),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                FilledButton.icon(
-                  onPressed: () => _showVoucherDialog(VoucherType.receipt),
-                  icon: const Icon(Icons.add_card),
-                  label: const Text('سند قبض'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => _showVoucherDialog(VoucherType.payment),
-                  icon: const Icon(Icons.payments_outlined),
-                  label: const Text('سند صرف'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => _showVoucherDialog(VoucherType.journal),
-                  icon: const Icon(Icons.menu_book_outlined),
-                  label: const Text('قيد يومي'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _showAccountDialog,
-                  icon: const Icon(Icons.account_tree_outlined),
-                  label: const Text('إضافة حساب'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _importAccounts,
-                  icon: const Icon(Icons.upload_file_outlined),
-                  label: const Text('استيراد Excel'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _showPartyDialog,
-                  icon: const Icon(Icons.people_alt_outlined),
-                  label: const Text('عميل / مورد'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _openAccountingReports,
-                  icon: const Icon(Icons.assessment_outlined),
-                  label: const Text('التقرير المالي'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _showAudit,
-                  icon: const Icon(Icons.fact_check_outlined),
-                  label: const Text('سجل التدقيق'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'شجرة الحسابات',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                  ),
-                ),
-                Text(
-                  '${liveAccounts.length} حساب',
-                  style: TextStyle(color: Colors.blueGrey.shade500),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Container(
-              decoration: _box(),
-              child: liveAccounts.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text(
-                        'لا توجد حسابات بعد. أضف حسابًا أو استورد دليل الحسابات.',
-                      ),
-                    )
-                  : Column(
-                      children: liveAccounts
-                          .map(
-                            (a) => ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: const Color(0xFFEAF0FF),
-                                child: Text(
-                                  a.code.substring(
-                                    0,
-                                    a.code.length > 2 ? 2 : a.code.length,
-                                  ),
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: Color(0xFF315CFF),
-                                  ),
-                                ),
-                              ),
-                              title: Text(
-                                a.name,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold),
-                              ),
-                              subtitle: Text(
-                                '${a.code}  •  ${a.type}  •  ${a.currency}',
-                              ),
-                              trailing: Text(
-                                a.balance.toStringAsFixed(2),
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          )
-                          .toList(),
-                    ),
-            ),
-          ],
-        ),
-      );
   Widget _walletPage() => MyWalletScreen(provider: walletProvider);
 
   Widget _connectorsPage() => ConnectorCenterScreen(
@@ -596,10 +409,14 @@ class _HomeShellState extends State<HomeShell> {
           Card(
             child: ListTile(
               onTap: _showChangePasswordDialog,
-              leading:
-                  const Icon(Icons.password_outlined, color: Color(0xFF315CFF)),
-              title: const Text('تغيير كلمة المرور',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              leading: const Icon(
+                Icons.password_outlined,
+                color: Color(0xFF315CFF),
+              ),
+              title: const Text(
+                'تغيير كلمة المرور',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               subtitle: const Text('تحديث كلمة مرور هذا الجهاز'),
               trailing: const Icon(Icons.chevron_left),
             ),
@@ -609,7 +426,8 @@ class _HomeShellState extends State<HomeShell> {
               leading: const Icon(Icons.fingerprint, color: WaselColors.muted),
               title: const Text('قفل الجلسة بالبصمة'),
               subtitle: const Text(
-                  'غير مفعّل: لا يُعاد قفل الجلسة تلقائيًا عند مغادرة التطبيق.'),
+                'غير مفعّل: لا يُعاد قفل الجلسة تلقائيًا عند مغادرة التطبيق.',
+              ),
               trailing:
                   const Icon(Icons.lock_outline, color: WaselColors.muted),
             ),
@@ -618,8 +436,10 @@ class _HomeShellState extends State<HomeShell> {
             child: ListTile(
               leading:
                   const Icon(Icons.backup_outlined, color: Color(0xFF315CFF)),
-              title: const Text('النسخ الاحتياطي المشفّر',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              title: const Text(
+                'النسخ الاحتياطي المشفّر',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               subtitle: Text(
                 kIsWeb
                     ? 'نزّل نسخة AES/GCM بامتداد .wbackup أو اختر ملفًا لاستعادته.'
@@ -644,11 +464,14 @@ class _HomeShellState extends State<HomeShell> {
           ),
           Card(
             child: ListTile(
-              leading: const Icon(Icons.cloud_off_outlined,
-                  color: WaselColors.muted),
+              leading: const Icon(
+                Icons.cloud_off_outlined,
+                color: WaselColors.muted,
+              ),
               title: const Text('مزامنة الخادم'),
               subtitle: const Text(
-                  'غير مهيّأة: تظل البيانات داخل قاعدة SQLite المحلية.'),
+                'غير مهيّأة: تظل البيانات داخل قاعدة SQLite المحلية.',
+              ),
               trailing:
                   const Icon(Icons.lock_outline, color: WaselColors.muted),
             ),
@@ -656,10 +479,14 @@ class _HomeShellState extends State<HomeShell> {
           Card(
             child: ListTile(
               onTap: _showCompanyDialog,
-              leading:
-                  const Icon(Icons.business_outlined, color: Color(0xFF315CFF)),
-              title: const Text('بيانات الشركة',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              leading: const Icon(
+                Icons.business_outlined,
+                color: Color(0xFF315CFF),
+              ),
+              title: const Text(
+                'بيانات الشركة',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               subtitle:
                   const Text('الاسم القانوني والرقم الضريبي وبيانات الطباعة'),
               trailing: const Icon(Icons.edit_outlined),
@@ -669,9 +496,12 @@ class _HomeShellState extends State<HomeShell> {
             child: ListTile(
               onTap: _logout,
               leading: const Icon(Icons.logout, color: Colors.redAccent),
-              title: const Text('تسجيل الخروج',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: const Text('ينهي جلسة هذا الجهاز ويعيدك إلى شاشة الدخول.'),
+              title: const Text(
+                'تسجيل الخروج',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle:
+                  const Text('ينهي جلسة هذا الجهاز ويعيدك إلى شاشة الدخول.'),
               trailing: const Icon(Icons.chevron_left),
             ),
           ),
@@ -692,56 +522,7 @@ class _HomeShellState extends State<HomeShell> {
       (_) => false,
     );
   }
-  String _empty(String value, String fallback) =>
-      value.trim().isEmpty ? fallback : value.trim();
-  Widget _accountHero(
-    String title,
-    String value,
-    String currency,
-    IconData icon,
-    Color color,
-  ) =>
-      Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: Colors.white, size: 34),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style:
-                        TextStyle(color: Colors.white.withValues(alpha: .75)),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    value,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  Text(
-                    currency,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: .75),
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
+
   Widget _stat(String label, String value, IconData icon, Color color) =>
       Expanded(
         child: Container(
@@ -834,7 +615,9 @@ class _HomeShellState extends State<HomeShell> {
                     (e) => ListTile(
                       onTap: () => _showRemittanceDetails(e),
                       contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
                       leading: CircleAvatar(
                         backgroundColor: const Color(0xFFEAF0FF),
                         child: Icon(
@@ -845,10 +628,12 @@ class _HomeShellState extends State<HomeShell> {
                           size: 19,
                         ),
                       ),
-                      title: Text(e.sender,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                      title: Text(
+                        e.sender,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
                       subtitle: Text(
                         '${e.source}  •  ${e.formattedDate}',
                         style: TextStyle(

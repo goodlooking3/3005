@@ -2,58 +2,22 @@ part of 'main.dart';
 
 extension _HomeShellAccountActions on _HomeShellState {
   Future<void> _showAccountDialog() async {
-    final code = TextEditingController();
-    final name = TextEditingController();
-    final type = TextEditingController();
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('إضافة حساب إلى الشجرة'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: code,
-              decoration: const InputDecoration(labelText: 'كود الحساب'),
-            ),
-            TextField(
-              controller: name,
-              decoration: const InputDecoration(labelText: 'اسم الحساب'),
-            ),
-            TextField(
-              controller: type,
-              decoration: const InputDecoration(
-                labelText: 'النوع: صندوق، بنك، عميل، مصروف...',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('إلغاء'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              if (code.text.trim().isEmpty || name.text.trim().isEmpty) {
-                return;
-              }
-              await accounting.upsertAccount(
-                Account(
-                  code: code.text.trim(),
-                  name: name.text.trim(),
-                  type: _empty(type.text, 'أصل'),
-                  kind: AccountKind.asset,
-                ),
-              );
-              await _hydrateAccounting();
-              if (dialogContext.mounted) Navigator.pop(dialogContext);
-            },
-            child: const Text('إضافة'),
-          ),
-        ],
-      ),
-    );
+    try {
+      final accounts = await accounting.accounts(includeInactive: true);
+      if (!mounted) return;
+      final saved = await showDialog<bool>(
+        context: context,
+        builder: (_) =>
+            AccountEditorDialog(repository: accounting, accounts: accounts),
+      );
+      if (saved == true) await _hydrateAccounting();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('تعذر فتح محرر الحساب: $error')));
+      }
+    }
   }
 
   Future<void> _importAccounts() async {
@@ -79,54 +43,11 @@ extension _HomeShellAccountActions on _HomeShellState {
   }
 
   Future<void> _showPartyDialog() async {
-    final name = TextEditingController();
-    final phone = TextEditingController();
-    final email = TextEditingController();
-    await showDialog<void>(
+    final saved = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('إضافة عميل أو مورد'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: name,
-              decoration: const InputDecoration(labelText: 'الاسم'),
-            ),
-            TextField(
-              controller: phone,
-              decoration: const InputDecoration(labelText: 'الهاتف'),
-            ),
-            TextField(
-              controller: email,
-              decoration: const InputDecoration(labelText: 'البريد الإلكتروني'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('إلغاء'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              if (name.text.trim().isEmpty) return;
-              await accounting.insertParty(
-                Party(
-                  name: name.text,
-                  type: 'customer',
-                  phone: phone.text,
-                  email: email.text,
-                ),
-              );
-              await accounting.log('create_party', name.text);
-              if (dialogContext.mounted) Navigator.pop(dialogContext);
-            },
-            child: const Text('حفظ العميل'),
-          ),
-        ],
-      ),
+      builder: (_) => PartyEditorDialog(repository: accounting),
     );
+    if (saved == true) await _hydrateAccounting();
   }
 
   Future<void> _showCompanyDialog() async {
@@ -203,10 +124,12 @@ extension _HomeShellAccountActions on _HomeShellState {
           : '',
     );
     final bankAccounts = liveAccounts
-        .where((account) =>
-            account.kind == AccountKind.bank &&
-            account.active &&
-            account.supportedCurrencies.contains('SAR'))
+        .where(
+          (account) =>
+              account.kind == AccountKind.bank &&
+              account.active &&
+              account.supportedCurrencies.contains('SAR'),
+        )
         .toList(growable: false);
     Account? linkedBank = bankAccounts.isEmpty ? null : bankAccounts.first;
     var enabled = connector.status == ConnectorStatus.connected;
@@ -237,19 +160,24 @@ extension _HomeShellAccountActions on _HomeShellState {
               TextField(
                 controller: qr,
                 decoration: const InputDecoration(
-                    labelText: 'بيانات الربط أو رمز الجلسة (اختياري)'),
+                  labelText: 'بيانات الربط أو رمز الجلسة (اختياري)',
+                ),
               ),
               if (connector.id == 'bank_sandbox')
                 DropdownButtonFormField<Account>(
                   initialValue: linkedBank,
                   decoration: const InputDecoration(
-                      labelText: 'الحساب البنكي المحاسبي'),
+                    labelText: 'الحساب البنكي المحاسبي',
+                  ),
                   items: bankAccounts
-                      .map((account) => DropdownMenuItem(
-                            value: account,
-                            child: Text(
-                                '${account.code} — ${account.name} (${account.currency})'),
-                          ))
+                      .map(
+                        (account) => DropdownMenuItem(
+                          value: account,
+                          child: Text(
+                            '${account.code} — ${account.name} (${account.currency})',
+                          ),
+                        ),
+                      )
                       .toList(),
                   onChanged: (value) => setLocal(() => linkedBank = value),
                 ),
@@ -263,8 +191,8 @@ extension _HomeShellAccountActions on _HomeShellState {
                       if (!opened && context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                              content:
-                                  Text('تعذر فتح إعدادات إشعارات Android')),
+                            content: Text('تعذر فتح إعدادات إشعارات Android'),
+                          ),
                         );
                       }
                     },
