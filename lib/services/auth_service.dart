@@ -5,6 +5,7 @@ import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
+  static const _minimumPasswordLength = 8;
   static const _configuredKey = 'wasel_auth_configured';
   static const _emailKey = 'wasel_auth_email';
   static const _phoneKey = 'wasel_auth_phone';
@@ -26,6 +27,9 @@ class AuthService {
   }) async {
     if (email.trim().isEmpty && phone.trim().isEmpty) {
       throw const FormatException('البريد الإلكتروني أو رقم الهاتف مطلوب');
+    }
+    if (password.length < _minimumPasswordLength) {
+      throw const FormatException('كلمة المرور يجب أن تكون 8 أحرف على الأقل');
     }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_emailKey, email.trim().toLowerCase());
@@ -67,7 +71,7 @@ class AuthService {
     required String currentPassword,
     required String newPassword,
   }) async {
-    if (newPassword.length < 6) return false;
+    if (newPassword.length < _minimumPasswordLength) return false;
     final prefs = await SharedPreferences.getInstance();
     if (!await _matchesAndMigrate(prefs, currentPassword)) return false;
     await prefs.setString(_passwordKey, await _passwordHash(newPassword));

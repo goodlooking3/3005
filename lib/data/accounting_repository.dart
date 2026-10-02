@@ -217,8 +217,18 @@ class AccountingRepository {
         voucher.description.trim().isEmpty ||
         voucher.currency.trim().isEmpty) {
       throw ArgumentError(
-        'Voucher number, description and currency are required',
+          'Voucher number, description and currency are required',
       );
+    }
+    final duplicate = await txn.query(
+      'vouchers',
+      columns: ['id'],
+      where: 'number = ?',
+      whereArgs: [voucher.number.trim()],
+      limit: 1,
+    );
+    if (duplicate.isNotEmpty) {
+      throw StateError('رقم السند مستخدم مسبقًا: ${voucher.number.trim()}');
     }
     await _validatePostingAccounts(txn, voucher);
     await _validatePostingCurrencies(txn, voucher);
@@ -350,6 +360,15 @@ class AccountingRepository {
       throw StateError('كل سطر ترحيل يجب أن يرتبط بحساب صالح');
     }
     await _validateAccountIds(txn, accountIds.whereType<int>().toList());
+    final accountRows = await txn.query(
+      'accounts',
+      columns: ['id', 'is_group'],
+      where: 'id IN (${List.filled(accountIds.length, '?').join(',')})',
+      whereArgs: accountIds.whereType<int>().toList(),
+    );
+    if (accountRows.any((row) => (row['is_group'] as int? ?? 0) == 1)) {
+      throw StateError('لا يمكن ترحيل سند إلى حساب تجميعي');
+    }
     final uniqueIds = accountIds.whereType<int>().toSet();
     if (uniqueIds.length != accountIds.length) {
       throw StateError('لا يمكن ترحيل قيد بحساب مدين ودائن متماثل');
@@ -487,6 +506,11 @@ class AccountingRepository {
               limit: 1,
             );
             if (parent.isEmpty) throw StateError('الحساب الأب غير موجود أو متوقف');
+            await _ensureNoAccountCycle(
+              db,
+              accountId: account.id,
+              parentId: account.parentId!,
+            );
           }
           final primaryCurrency = account.currency.trim().toUpperCase();
           if (primaryCurrency.isEmpty) throw ArgumentError('عملة الحساب مطلوبة');
@@ -544,6 +568,30 @@ class AccountingRepository {
           return insertedId;
         },
       );
+
+  Future<void> _ensureNoAccountCycle(
+    Database db, {
+    required int? accountId,
+    required int parentId,
+  }) async {
+    if (accountId == null) return;
+    final visited = <int>{accountId};
+    var current = parentId;
+    while (true) {
+      if (!visited.add(current)) {
+        throw StateError('لا يمكن إنشاء دورة في شجرة الحسابات');
+      }
+      final rows = await db.query(
+        'accounts',
+        columns: ['parent_id'],
+        where: 'id = ?',
+        whereArgs: [current],
+        limit: 1,
+      );
+      if (rows.isEmpty || rows.single['parent_id'] == null) return;
+      current = rows.single['parent_id']! as int;
+    }
+  }
   Future<List<Account>> accounts({bool includeInactive = false}) async {
     final rows = await (await _db).query(
       'accounts',

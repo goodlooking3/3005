@@ -82,4 +82,83 @@ void main() {
     final voucherId = await repository.insertVoucher(voucher);
     expect(voucherId, greaterThan(0));
   });
+
+  test('rejects posting to a group account', () async {
+    final repository = AccountingRepository();
+    final groupId = await repository.upsertAccount(
+      const Account(
+        code: 'P2-GROUP',
+        name: 'حساب تجميعي',
+        type: 'أصل',
+        isGroup: true,
+      ),
+    );
+    final leafId = await repository.upsertAccount(
+      const Account(code: 'P2-LEAF', name: 'حساب تفصيلي', type: 'أصل'),
+    );
+    final voucher = Voucher(
+      number: 'P2-GROUP-VOUCHER',
+      type: VoucherType.journal,
+      description: 'منع الحساب التجميعي',
+      amount: 10,
+      currency: 'SAR',
+      date: DateTime(2026, 9, 22),
+      lines: [
+        VoucherLine(accountId: groupId, accountName: 'حساب تجميعي', debit: 10),
+        VoucherLine(accountId: leafId, accountName: 'حساب تفصيلي', credit: 10),
+      ],
+    );
+
+    await expectLater(repository.insertVoucher(voucher), throwsStateError);
+  });
+
+  test('rejects duplicate voucher numbers atomically', () async {
+    final repository = AccountingRepository();
+    final debitId = await repository.upsertAccount(
+      const Account(code: 'P2-DUP-D', name: 'مدين مكرر', type: 'أصل'),
+    );
+    final creditId = await repository.upsertAccount(
+      const Account(code: 'P2-DUP-C', name: 'دائن مكرر', type: 'إيراد'),
+    );
+    Voucher build() => Voucher(
+          number: 'P2-DUPLICATE',
+          type: VoucherType.journal,
+          description: 'رقم مكرر',
+          amount: 20,
+          currency: 'SAR',
+          date: DateTime(2026, 9, 22),
+          lines: [
+            VoucherLine(accountId: debitId, accountName: 'مدين مكرر', debit: 20),
+            VoucherLine(accountId: creditId, accountName: 'دائن مكرر', credit: 20),
+          ],
+        );
+
+    await repository.insertVoucher(build());
+    await expectLater(repository.insertVoucher(build()), throwsStateError);
+    final db = await LocalDatabase.instance.database;
+    expect(await db.query('vouchers', where: 'number = ?', whereArgs: ['P2-DUPLICATE']), hasLength(1));
+  });
+
+  test('rejects an account cycle across multiple parents', () async {
+    final repository = AccountingRepository();
+    final rootId = await repository.upsertAccount(
+      const Account(code: 'P2-CYCLE-A', name: 'جذر دورة', type: 'أصل'),
+    );
+    final childId = await repository.upsertAccount(
+      Account(code: 'P2-CYCLE-B', name: 'ابن دورة', type: 'أصل', parentId: rootId),
+    );
+
+    await expectLater(
+      repository.upsertAccount(
+        Account(
+          id: rootId,
+          code: 'P2-CYCLE-A',
+          name: 'جذر دورة',
+          type: 'أصل',
+          parentId: childId,
+        ),
+      ),
+      throwsStateError,
+    );
+  });
 }

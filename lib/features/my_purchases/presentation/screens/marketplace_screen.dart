@@ -21,6 +21,9 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
   List<Vendor> vendors = [];
   List<MarketplaceProduct> products = [];
   final cart = <PurchaseCartLine>[];
+  bool _loading = false;
+  bool _checkingOut = false;
+  String? _error;
 
   @override
   void initState() {
@@ -29,26 +32,33 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
   }
 
   Future<void> _load() async {
-    if (kIsWeb && ProductionConfig.webReviewMode) await db.seedIfEmpty();
-    final loaded = await db.vendors(category: category);
-    var selectedVendor = loaded.isEmpty ? null : loaded.first;
-    var selectedProducts = <MarketplaceProduct>[];
-    for (final candidate in loaded) {
-      final id = candidate.id;
-      if (id == null) continue;
-      final items = await db.products(id);
-      if (items.isNotEmpty) {
-        selectedVendor = candidate;
-        selectedProducts = items;
-        break;
+    if (mounted) setState(() { _loading = true; _error = null; });
+    try {
+      if (kIsWeb && ProductionConfig.webReviewMode) await db.seedIfEmpty();
+      final loaded = await db.vendors(category: category);
+      var selectedVendor = loaded.isEmpty ? null : loaded.first;
+      var selectedProducts = <MarketplaceProduct>[];
+      for (final candidate in loaded) {
+        final id = candidate.id;
+        if (id == null) continue;
+        final items = await db.products(id);
+        if (items.isNotEmpty) {
+          selectedVendor = candidate;
+          selectedProducts = items;
+          break;
+        }
       }
+      if (!mounted) return;
+      setState(() {
+        vendors = loaded;
+        vendor = selectedVendor;
+        products = selectedProducts;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _error = 'تعذر تحميل الموردين والمنتجات');
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
-    if (!mounted) return;
-    setState(() {
-      vendors = loaded;
-      vendor = selectedVendor;
-      products = selectedProducts;
-    });
   }
 
   Future<void> _selectVendor(Vendor item) async {
@@ -56,8 +66,12 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
       vendor = item;
       products = [];
     });
-    final items = await db.products(item.id!);
-    if (mounted) setState(() => products = items);
+    try {
+      final items = await db.products(item.id!);
+      if (mounted) setState(() => products = items);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'تعذر تحميل منتجات المورد');
+    }
   }
 
   void _add(MarketplaceProduct product) => setState(() {
@@ -71,16 +85,23 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
       });
 
   Future<void> _checkout() async {
-    if (vendor == null || cart.isEmpty) return;
-    final receipt = await engine.checkout(
-        vendor: vendor!,
-        cart: PurchaseCart(List.of(cart)),
-        walletName: 'محفظتي',
-        walletAccount: 'محفظتي');
-    if (!mounted) return;
-    setState(() => cart.clear());
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('تم تسجيل ${receipt.order.number} وترحيله محاسبيًا')));
+    if (vendor == null || cart.isEmpty || _checkingOut) return;
+    setState(() { _checkingOut = true; _error = null; });
+    try {
+      final receipt = await engine.checkout(
+          vendor: vendor!,
+          cart: PurchaseCart(List.of(cart)),
+          walletName: 'محفظتي',
+          walletAccount: 'محفظتي');
+      if (!mounted) return;
+      setState(() => cart.clear());
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('تم تسجيل ${receipt.order.number} وترحيله محاسبيًا')));
+    } catch (_) {
+      if (mounted) setState(() => _error = 'تعذر إتمام الشراء؛ لم تُحفظ تغييرات جزئية');
+    } finally {
+      if (mounted) setState(() => _checkingOut = false);
+    }
   }
 
   @override
@@ -102,23 +123,41 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                   },
                 ),
               OutlinedButton.icon(
-                onPressed: _addVendor,
+                onPressed: _loading ? null : _addVendor,
                 icon: const Icon(Icons.person_add_alt_1),
                 label: const Text('مورد'),
               ),
               OutlinedButton.icon(
-                onPressed: vendor == null ? null : _addProduct,
+                onPressed: vendor == null || _loading ? null : _addProduct,
                 icon: const Icon(Icons.add_box_outlined),
                 label: const Text('منتج'),
               ),
               FilledButton.icon(
-                onPressed: cart.isEmpty ? null : _checkout,
+                onPressed: cart.isEmpty || _checkingOut ? null : _checkout,
                 icon: const Icon(Icons.account_balance_wallet),
-                label: Text('السلة (${cart.length})'),
+                label: Text(_checkingOut
+                    ? 'جارٍ الحفظ…'
+                    : 'السلة (${cart.length} | ${cart.fold<double>(0, (sum, item) => sum + item.quantity)} قطعة)'),
               ),
             ],
           ),
           const SizedBox(height: 16),
+          if (_error != null)
+            Card(
+              color: Theme.of(context).colorScheme.errorContainer,
+              child: ListTile(
+                leading: const Icon(Icons.error_outline),
+                title: Text(_error!),
+                trailing: IconButton(
+                  onPressed: _load,
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'إعادة المحاولة',
+                ),
+              ),
+            ),
+          if (_loading && products.isEmpty)
+            const Expanded(child: Center(child: CircularProgressIndicator()))
+          else
           SizedBox(
               height: 82,
               child: ListView.separated(

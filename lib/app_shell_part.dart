@@ -12,9 +12,9 @@ class _ConnectionStatusPill extends StatelessWidget {
         : local
             ? 'محلي • SQLite'
             : configured
-                ? 'مزامنة جاهزة'
+                ? 'إعداد مزامنة'
                 : 'متصل بدون مزامنة';
-    final icon = local ? Icons.offline_bolt_rounded : Icons.cloud_done_rounded;
+    final icon = local ? Icons.offline_bolt_rounded : Icons.cloud_queue_rounded;
     final color = local ? WaselColors.success : WaselColors.primary;
     return Semantics(
       label: 'حالة التشغيل: $label',
@@ -665,6 +665,16 @@ class _HomeShellState extends State<HomeShell> {
               trailing: const Icon(Icons.edit_outlined),
             ),
           ),
+          Card(
+            child: ListTile(
+              onTap: _logout,
+              leading: const Icon(Icons.logout, color: Colors.redAccent),
+              title: const Text('تسجيل الخروج',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: const Text('ينهي جلسة هذا الجهاز ويعيدك إلى شاشة الدخول.'),
+              trailing: const Icon(Icons.chevron_left),
+            ),
+          ),
           const Card(
             child: ListTile(
               leading: Icon(Icons.language_rounded, color: WaselColors.muted),
@@ -674,6 +684,14 @@ class _HomeShellState extends State<HomeShell> {
           ),
         ],
       );
+  Future<void> _logout() async {
+    await AuthService().setRemembered(false);
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const AuthGate()),
+      (_) => false,
+    );
+  }
   String _empty(String value, String fallback) =>
       value.trim().isEmpty ? fallback : value.trim();
   Widget _accountHero(

@@ -35,13 +35,26 @@ class WalletProvider extends ChangeNotifier {
 
   Future<void> applyFilter(WalletTransactionFilter value) async {
     filter = value;
-    transactions = await repository.transactions(filter: value);
-    notifyListeners();
+    try {
+      error = null;
+      transactions = await repository.transactions(filter: value);
+    } catch (_) {
+      error = 'تعذر تطبيق التصفية على كشف العمليات';
+    } finally {
+      notifyListeners();
+    }
   }
 
   Future<void> addTransaction(WalletTransaction value) async {
-    await repository.saveTransaction(value);
-    await load();
+    try {
+      error = null;
+      notifyListeners();
+      await repository.saveTransaction(value);
+      await load();
+    } catch (_) {
+      error = 'تعذر حفظ الحركة؛ لم تُسجل تغييرات جزئية';
+      notifyListeners();
+    }
   }
 
   Future<void> addWallet(Wallet wallet, {WalletAccount? account}) async {

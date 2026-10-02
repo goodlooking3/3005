@@ -89,8 +89,8 @@ class _SetupPageState extends State<SetupPage> {
   Future<void> _submit() async {
     if (name.text.trim().isEmpty ||
         (email.text.trim().isEmpty && phone.text.trim().isEmpty) ||
-        password.text.length < 6) {
-      _message('أدخل الاسم والبريد أو الهاتف وكلمة مرور من 6 أحرف على الأقل');
+        password.text.length < 8) {
+      _message('أدخل الاسم والبريد أو الهاتف وكلمة مرور من 8 أحرف على الأقل');
       return;
     }
     setState(() => loading = true);

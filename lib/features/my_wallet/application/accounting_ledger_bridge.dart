@@ -125,33 +125,57 @@ class AccountingLedgerBridge {
         kind: AccountKind.liability,
         currency: transaction.currency,
         group: true);
+    final clearingDetail = await _ensure(
+      txn,
+      code: '2100-${_safeCode(transaction.currency)}',
+      name: 'تحويلات وسيطة ${transaction.currency}',
+      kind: AccountKind.liability,
+      currency: transaction.currency,
+      parentId: clearing.id,
+    );
     final income = await _ensure(txn,
         code: '4100',
         name: 'حساب الإيرادات والمقبوضات',
         kind: AccountKind.revenue,
         currency: transaction.currency,
         group: true);
+    final incomeDetail = await _ensure(
+      txn,
+      code: '4100-${_safeCode(transaction.currency)}',
+      name: 'إيرادات ومقبوضات ${transaction.currency}',
+      kind: AccountKind.revenue,
+      currency: transaction.currency,
+      parentId: income.id,
+    );
     final expenses = await _ensure(txn,
         code: '5100',
         name: 'حساب المشتريات والمصروفات',
         kind: AccountKind.expense,
         currency: transaction.currency,
         group: true);
+    final expenseDetail = await _ensure(
+      txn,
+      code: '5100-${_safeCode(transaction.currency)}',
+      name: 'مشتريات ومصروفات ${transaction.currency}',
+      kind: AccountKind.expense,
+      currency: transaction.currency,
+      parentId: expenses.id,
+    );
 
     final source = await _linkedAccount(txn, transaction.fromAccount, transaction.currency, transaction.fromWalletAccountId) ?? fallbackSource;
     final destination = await _linkedAccount(txn, transaction.toAccount, transaction.currency, transaction.toWalletAccountId) ?? fallbackDestination;
     return switch (transaction.type) {
       WalletTransactionType.transfer =>
         _LedgerAccounts(
-          destination.id == fallbackDestination.id ? clearing : destination,
+          destination.id == fallbackDestination.id ? clearingDetail : destination,
           source,
         ),
       WalletTransactionType.receipt ||
       WalletTransactionType.topUp =>
-        _LedgerAccounts(destination, income),
+        _LedgerAccounts(destination, incomeDetail),
       WalletTransactionType.purchase ||
       WalletTransactionType.billPayment =>
-        _LedgerAccounts(expenses, source),
+        _LedgerAccounts(expenseDetail, source),
     };
   }
 
