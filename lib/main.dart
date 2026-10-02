@@ -8,6 +8,7 @@ import 'core/models.dart';
 import 'core/production_config.dart';
 import 'data/local_database.dart';
 import 'data/accounting_repository.dart';
+import 'services/account_import_service.dart';
 import 'services/auth_service.dart';
 import 'services/secure_backup_service.dart';
 import 'core/design_system.dart';
@@ -18,8 +19,11 @@ import 'features/connectors/application/connector_service.dart';
 import 'features/connectors/application/connector_center_controller.dart';
 import 'services/android_notification_service.dart';
 import 'features/accounting/application/accounting_reports_controller.dart';
+import 'features/accounting/presentation/account_editor_dialog.dart';
 import 'features/accounting/presentation/accounting_reports_screen.dart';
 import 'features/accounting/presentation/accounting_workspace_screen.dart';
+import 'features/accounting/presentation/party_editor_dialog.dart';
+import 'features/accounting/presentation/voucher_editor_dialog.dart';
 import 'features/my_wallet/data/repositories/wallet_repository_impl.dart';
 import 'features/my_wallet/presentation/providers/wallet_provider.dart';
 import 'features/my_wallet/presentation/screens/my_wallet_screen.dart';
@@ -48,12 +52,12 @@ class WaselApp extends StatelessWidget {
   const WaselApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-    debugShowCheckedModeBanner: false,
-    title: 'واصل',
-    theme: waselTheme(),
-    home: const Directionality(
-      textDirection: TextDirection.rtl,
-      child: AuthGate(),
-    ),
-  );
+        debugShowCheckedModeBanner: false,
+        title: 'واصل',
+        theme: waselTheme(),
+        home: const Directionality(
+          textDirection: TextDirection.rtl,
+          child: AuthGate(),
+        ),
+      );
 }
