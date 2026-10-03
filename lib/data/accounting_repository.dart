@@ -755,12 +755,26 @@ class AccountingRepository {
           await db.rawQuery('SELECT COUNT(*) FROM vouchers'),
         ) ??
         0;
-    final cash = await db.rawQuery(
-      "SELECT COALESCE(SUM(opening_balance),0) total FROM accounts WHERE kind = 'cash'",
-    );
-    final bank = await db.rawQuery(
-      "SELECT COALESCE(SUM(opening_balance),0) total FROM accounts WHERE kind = 'bank'",
-    );
+    final cash = await db.rawQuery('''
+      SELECT COALESCE(SUM(a.opening_balance + COALESCE(j.debit, 0) - COALESCE(j.credit, 0)), 0) total
+      FROM accounts a
+      LEFT JOIN (
+        SELECT jl.account_id, SUM(jl.debit) debit, SUM(jl.credit) credit
+        FROM journal_lines jl
+        GROUP BY jl.account_id
+      ) j ON j.account_id = a.id
+      WHERE a.kind = 'cash' AND a.active = 1 AND a.is_group = 0
+    ''');
+    final bank = await db.rawQuery('''
+      SELECT COALESCE(SUM(a.opening_balance + COALESCE(j.debit, 0) - COALESCE(j.credit, 0)), 0) total
+      FROM accounts a
+      LEFT JOIN (
+        SELECT jl.account_id, SUM(jl.debit) debit, SUM(jl.credit) credit
+        FROM journal_lines jl
+        GROUP BY jl.account_id
+      ) j ON j.account_id = a.id
+      WHERE a.kind = 'bank' AND a.active = 1 AND a.is_group = 0
+    ''');
     return FinancialSummary(
       totalDebits: (totals.first['debits'] as num).toDouble(),
       totalCredits: (totals.first['credits'] as num).toDouble(),

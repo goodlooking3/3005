@@ -41,6 +41,39 @@ void main() {
     expect(summary.vouchersCount, 0);
   });
 
+  test('financial summary includes posted cash and bank journal movement', () async {
+    final repository = AccountingRepository();
+    final db = await LocalDatabase.instance.database;
+    final cashId = await db.insert('accounts', {
+      'code': 'TEST-CASH', 'name': 'نقد الاختبار', 'type': 'أصل', 'kind': 'cash',
+      'currency': 'SAR', 'opening_balance': 100, 'active': 1, 'is_group': 0,
+    });
+    final bankId = await db.insert('accounts', {
+      'code': 'TEST-BANK', 'name': 'بنك الاختبار', 'type': 'أصل', 'kind': 'bank',
+      'currency': 'SAR', 'opening_balance': 200, 'active': 1, 'is_group': 0,
+    });
+    final voucherId = await db.insert('vouchers', {
+      'number': 'TEST-SUMMARY', 'type': 'journal', 'description': 'اختبار الملخص',
+      'amount': 90, 'currency': 'SAR', 'date': DateTime.now().toIso8601String(),
+    });
+    final entryId = await db.insert('journal_entries', {
+      'voucher_id': voucherId, 'entry_date': DateTime.now().toIso8601String(),
+      'number': 'TEST-SUMMARY', 'description': 'اختبار الملخص',
+      'debit_total': 50, 'credit_total': 40,
+    });
+    await db.insert('journal_lines', {
+      'journal_entry_id': entryId, 'account_id': cashId, 'account_name': 'نقد الاختبار',
+      'debit': 50, 'credit': 0, 'currency': 'SAR',
+    });
+    await db.insert('journal_lines', {
+      'journal_entry_id': entryId, 'account_id': bankId, 'account_name': 'بنك الاختبار',
+      'debit': 0, 'credit': 40, 'currency': 'SAR',
+    });
+    final summary = await repository.summary();
+    expect(summary.cashBalance, 150);
+    expect(summary.bankBalance, 160);
+  });
+
   test('chart structure may load without adding demo leaf accounts', () async {
     final repository = AccountingRepository();
 
