@@ -946,6 +946,17 @@ class AccountingRepository {
         orderBy: 'booked_at DESC, id DESC',
       );
 
+  Future<int?> voucherIdByNumber(String number) async {
+    final rows = await (await _db).query(
+      'vouchers',
+      columns: ['id'],
+      where: 'number = ?',
+      whereArgs: [number.trim()],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.single['id'] as int;
+  }
+
   Future<void> markBankSandboxPosted({
     required int id,
     required int voucherId,

@@ -101,8 +101,18 @@ class BankSandboxConnector implements ConnectorAdapter {
       final direction = row['direction']! as String;
       final debit = direction == 'credit' ? bank : counterpart;
       final credit = direction == 'credit' ? counterpart : bank;
+      final voucherNumber = 'BANK-SBX-${row['external_id']}';
+      final existingVoucherId = await repository.voucherIdByNumber(voucherNumber);
+      if (existingVoucherId != null) {
+        await repository.markBankSandboxPosted(
+          id: row['id']! as int,
+          voucherId: existingVoucherId,
+        );
+        posted++;
+        continue;
+      }
       final voucherId = await repository.insertVoucher(Voucher(
-        number: 'BANK-SBX-${row['external_id']}',
+        number: voucherNumber,
         type: direction == 'credit' ? VoucherType.receipt : VoucherType.payment,
         description: row['description']! as String,
         amount: amount,
