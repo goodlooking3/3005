@@ -47,6 +47,82 @@ void main() {
     expect(movements.single['quantity'], 3.0);
   });
 
+  test('purchase capitalization updates moving weighted average cost',
+      () async {
+    final engine = PurchaseEngine();
+    final vendor = const Vendor(name: 'مورد المتوسط', category: 'تجزئة');
+    final first = await engine.checkout(
+      vendor: vendor,
+      cart: PurchaseCart([
+        PurchaseCartLine(
+          product: const MarketplaceProduct(
+            vendorId: 1,
+            name: 'صنف متوسط مرجح',
+            category: 'تجزئة',
+            price: 10,
+            currency: 'SAR',
+          ),
+          quantity: 2,
+        ),
+      ]),
+      walletName: 'محفظة المتوسط',
+      walletAccount: 'محفظة المتوسط',
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 2));
+    final second = await engine.checkout(
+      vendor: vendor,
+      cart: PurchaseCart([
+        PurchaseCartLine(
+          product: const MarketplaceProduct(
+            vendorId: 1,
+            name: 'صنف متوسط مرجح',
+            category: 'تجزئة',
+            price: 20,
+            currency: 'SAR',
+          ),
+          quantity: 3,
+        ),
+      ]),
+      walletName: 'محفظة المتوسط',
+      walletAccount: 'محفظة المتوسط',
+    );
+
+    final db = await LocalDatabase.instance.database;
+    final item = (await db.query(
+      'inventory_items',
+      where: 'name = ?',
+      whereArgs: ['صنف متوسط مرجح'],
+    ))
+        .single;
+    expect(item['quantity'], 5.0);
+    expect(item['cost_price'], 16.0);
+
+    final order = (await db.query(
+      'purchase_orders',
+      where: 'number = ?',
+      whereArgs: [second.order.number],
+    ))
+        .single;
+    final inventoryAccount = (await db.query(
+      'accounts',
+      where: 'code = ?',
+      whereArgs: ['1300'],
+    ))
+        .single;
+    final journalLines = await db.query(
+      'journal_lines',
+      where: 'journal_entry_id = ?',
+      whereArgs: [order['journal_entry_id']],
+      orderBy: 'id ASC',
+    );
+    final inventoryLine = journalLines.singleWhere(
+      (line) => line['account_id'] == inventoryAccount['id'],
+    );
+    expect(inventoryLine['debit'], 60.0);
+    expect(inventoryLine['credit'], 0.0);
+    expect(first.order.number, isNot(second.order.number));
+  });
+
   test('currency repository requires and applies a dated exchange rate',
       () async {
     final repository = CurrencyRepository();
@@ -120,5 +196,19 @@ void main() {
     expect(transactions, hasLength(1));
     expect(journals, hasLength(1));
     expect(transactions.single['journal_entry_id'], journals.single['id']);
+    final debitLine = (await db.query(
+      'journal_lines',
+      where: 'journal_entry_id = ? AND debit > 0',
+      whereArgs: [journals.single['id']],
+    ))
+        .single;
+    final debitAccount = (await db.query(
+      'accounts',
+      where: 'id = ?',
+      whereArgs: [debitLine['account_id']],
+    ))
+        .single;
+    expect(debitAccount['kind'], 'expense');
+    expect(debitAccount['code'], isNot('1300'));
   });
 }

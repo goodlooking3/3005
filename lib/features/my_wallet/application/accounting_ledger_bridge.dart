@@ -4,6 +4,7 @@ import '../../../core/accounting.dart';
 import '../../../data/local_database.dart';
 import '../../../data/accounting_repository.dart';
 import '../../../data/currency_policy.dart';
+import '../../../data/inventory_ledger_accounts.dart';
 import '../domain/models/wallet_transaction.dart';
 
 class AccountingLedgerBridge {
@@ -19,8 +20,9 @@ class AccountingLedgerBridge {
 
   Future<WalletTransaction> postInTransaction(
     Transaction txn,
-    WalletTransaction transaction,
-  ) async {
+    WalletTransaction transaction, {
+    bool capitalizeAsInventory = false,
+  }) async {
     if (transaction.amount <= 0 ||
         !transaction.amount.isFinite ||
         transaction.currency.trim().isEmpty) {
@@ -32,7 +34,11 @@ class AccountingLedgerBridge {
       currency: transaction.currency,
       at: transaction.date,
     );
-    final voucher = await _voucher(txn, transaction);
+    final voucher = await _voucher(
+      txn,
+      transaction,
+      capitalizeAsInventory: capitalizeAsInventory,
+    );
     final voucherId = await accounting.insertVoucherInTransaction(txn, voucher);
     final journalRows = await txn.query(
       'journal_entries',
@@ -54,9 +60,14 @@ class AccountingLedgerBridge {
 
   Future<Voucher> _voucher(
     Transaction txn,
-    WalletTransaction transaction,
-  ) async {
-    final accounts = await _ensureChart(txn, transaction);
+    WalletTransaction transaction, {
+    required bool capitalizeAsInventory,
+  }) async {
+    final accounts = await _ensureChart(
+      txn,
+      transaction,
+      capitalizeAsInventory: capitalizeAsInventory,
+    );
     return Voucher(
       number: transaction.reference?.trim().isNotEmpty == true
           ? transaction.reference!
@@ -85,8 +96,9 @@ class AccountingLedgerBridge {
 
   Future<_LedgerAccounts> _ensureChart(
     Transaction txn,
-    WalletTransaction transaction,
-  ) async {
+    WalletTransaction transaction, {
+    required bool capitalizeAsInventory,
+  }) async {
     final currentAssets = await _ensure(txn,
         code: '1000',
         name: 'الأصول المتداولة',
@@ -162,6 +174,14 @@ class AccountingLedgerBridge {
       parentId: expenses.id,
     );
 
+    final inventoryAsset = capitalizeAsInventory
+        ? (await InventoryLedgerAccountResolver().ensure(
+            txn,
+            currency: transaction.currency,
+          ))
+            .inventoryAsset
+        : null;
+
     final source = await _linkedAccount(txn, transaction.fromAccount, transaction.currency, transaction.fromWalletAccountId) ?? fallbackSource;
     final destination = await _linkedAccount(txn, transaction.toAccount, transaction.currency, transaction.toWalletAccountId) ?? fallbackDestination;
     return switch (transaction.type) {
@@ -173,9 +193,10 @@ class AccountingLedgerBridge {
       WalletTransactionType.receipt ||
       WalletTransactionType.topUp =>
         _LedgerAccounts(destination, incomeDetail),
-      WalletTransactionType.purchase ||
-      WalletTransactionType.billPayment =>
-        _LedgerAccounts(expenseDetail, source),
+      WalletTransactionType.purchase => capitalizeAsInventory
+          ? _LedgerAccounts(inventoryAsset!, source)
+          : _LedgerAccounts(expenseDetail, source),
+      WalletTransactionType.billPayment => _LedgerAccounts(expenseDetail, source),
     };
   }
 

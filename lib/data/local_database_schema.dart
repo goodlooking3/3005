@@ -69,5 +69,19 @@ class LocalDatabaseSchema {
           "TEXT NOT NULL DEFAULT 'posted'");
     if (oldVersion < 22) await _addWalletAccountMetadata(db);
     if (oldVersion < 23) await _addWalletOperationMetadata(db);
+    if (oldVersion < 24) {
+      await _addColumnIfMissing(
+        db,
+        'sales_invoices',
+        'cost_journal_entry_id',
+        'INTEGER REFERENCES journal_entries(id)',
+      );
+      await _addColumnIfMissing(
+        db,
+        'sales_return_lines',
+        'cost_journal_entry_id',
+        'INTEGER REFERENCES journal_entries(id)',
+      );
+    }
   }
 }

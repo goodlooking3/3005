@@ -157,7 +157,7 @@ Future<void> _createCommerceTables(Database db) async {
     '''CREATE TABLE IF NOT EXISTS inventory_items (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, sku TEXT NOT NULL DEFAULT '', image_path TEXT, cost_price REAL NOT NULL CHECK(cost_price >= 0), sale_price REAL NOT NULL CHECK(sale_price >= 0), quantity REAL NOT NULL CHECK(quantity >= 0), low_stock_threshold REAL NOT NULL DEFAULT 5 CHECK(low_stock_threshold >= 0), currency TEXT NOT NULL DEFAULT 'SAR', active INTEGER NOT NULL DEFAULT 1)''',
   );
   await db.execute(
-    '''CREATE TABLE IF NOT EXISTS sales_invoices (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT NOT NULL UNIQUE, customer_name TEXT NOT NULL, payment_account TEXT NOT NULL, currency TEXT NOT NULL, base_total REAL, base_currency TEXT, exchange_rate REAL, total REAL NOT NULL CHECK(total > 0), cost_of_goods_sold REAL NOT NULL CHECK(cost_of_goods_sold >= 0), profit REAL NOT NULL, issued_at TEXT NOT NULL, journal_entry_id INTEGER, status TEXT NOT NULL, FOREIGN KEY(journal_entry_id) REFERENCES journal_entries(id))''',
+    '''CREATE TABLE IF NOT EXISTS sales_invoices (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT NOT NULL UNIQUE, customer_name TEXT NOT NULL, payment_account TEXT NOT NULL, currency TEXT NOT NULL, base_total REAL, base_currency TEXT, exchange_rate REAL, total REAL NOT NULL CHECK(total > 0), cost_of_goods_sold REAL NOT NULL CHECK(cost_of_goods_sold >= 0), profit REAL NOT NULL, issued_at TEXT NOT NULL, journal_entry_id INTEGER, cost_journal_entry_id INTEGER, status TEXT NOT NULL, FOREIGN KEY(journal_entry_id) REFERENCES journal_entries(id), FOREIGN KEY(cost_journal_entry_id) REFERENCES journal_entries(id))''',
   );
   await db.execute(
     '''CREATE TABLE IF NOT EXISTS sales_invoice_lines (id INTEGER PRIMARY KEY AUTOINCREMENT, invoice_number TEXT NOT NULL, item_id INTEGER NOT NULL, item_name TEXT NOT NULL, quantity REAL NOT NULL CHECK(quantity > 0), unit_price REAL NOT NULL CHECK(unit_price >= 0), unit_cost REAL NOT NULL CHECK(unit_cost >= 0), line_total REAL NOT NULL CHECK(line_total >= 0), FOREIGN KEY(invoice_number) REFERENCES sales_invoices(number), FOREIGN KEY(item_id) REFERENCES inventory_items(id))''',
@@ -184,10 +184,12 @@ Future<void> _createSalesReturnTables(Database db) async {
         quantity REAL NOT NULL CHECK(quantity > 0),
         amount REAL NOT NULL CHECK(amount > 0),
         journal_entry_id INTEGER NOT NULL,
+        cost_journal_entry_id INTEGER,
         created_at TEXT NOT NULL,
         FOREIGN KEY(invoice_number) REFERENCES sales_invoices(number),
         FOREIGN KEY(invoice_line_id) REFERENCES sales_invoice_lines(id),
-        FOREIGN KEY(journal_entry_id) REFERENCES journal_entries(id)
+        FOREIGN KEY(journal_entry_id) REFERENCES journal_entries(id),
+        FOREIGN KEY(cost_journal_entry_id) REFERENCES journal_entries(id)
       )
     ''');
   await db.execute(

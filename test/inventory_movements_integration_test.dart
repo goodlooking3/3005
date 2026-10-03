@@ -69,7 +69,7 @@ void main() {
             itemName: 'صنف سجل مرتجع',
             quantity: 2,
             unitPrice: 18,
-            unitCost: 10)
+            unitCost: 999)
       ],
     );
 
@@ -100,6 +100,70 @@ void main() {
         .single;
     expect(invoiceRow['status'], 'returned');
     expect(invoiceRow['reversal_journal_entry_id'], returnJournal);
+    expect(invoiceRow['cost_of_goods_sold'], 20.0);
+    final saleLine = (await db.query('sales_invoice_lines',
+            where: 'invoice_number = ?', whereArgs: [number]))
+        .single;
+    expect(saleLine['unit_cost'], 10.0);
+    final saleCostJournalId = invoiceRow['cost_journal_entry_id'] as int;
+    final saleCostJournal = (await db.query('journal_entries',
+            where: 'id = ?', whereArgs: [saleCostJournalId]))
+        .single;
+    expect(saleCostJournal['debit_total'], 20.0);
+    expect(saleCostJournal['credit_total'], 20.0);
+    final saleCostLines = await db.query(
+      'journal_lines',
+      where: 'journal_entry_id = ?',
+      whereArgs: [saleCostJournalId],
+    );
+    final saleDebit = saleCostLines.singleWhere((line) => line['debit'] != 0);
+    final saleCredit = saleCostLines.singleWhere((line) => line['credit'] != 0);
+    final saleDebitAccount = (await db.query(
+      'accounts',
+      where: 'id = ?',
+      whereArgs: [saleDebit['account_id']],
+    ))
+        .single;
+    final saleCreditAccount = (await db.query(
+      'accounts',
+      where: 'id = ?',
+      whereArgs: [saleCredit['account_id']],
+    ))
+        .single;
+    expect(saleDebitAccount['code'], '5200');
+    expect(saleCreditAccount['code'], '1300');
+    final returnCostLine = (await db.query('sales_return_lines',
+            where: 'invoice_number = ?', whereArgs: [number]))
+        .single;
+    final returnCostJournal = (await db.query('journal_entries',
+            where: 'id = ?',
+            whereArgs: [returnCostLine['cost_journal_entry_id']]))
+        .single;
+    expect(returnCostJournal['debit_total'], 20.0);
+    expect(returnCostJournal['credit_total'], 20.0);
+    final returnCostLines = await db.query(
+      'journal_lines',
+      where: 'journal_entry_id = ?',
+      whereArgs: [returnCostLine['cost_journal_entry_id']],
+    );
+    final returnDebit =
+        returnCostLines.singleWhere((line) => line['debit'] != 0);
+    final returnCredit =
+        returnCostLines.singleWhere((line) => line['credit'] != 0);
+    final returnDebitAccount = (await db.query(
+      'accounts',
+      where: 'id = ?',
+      whereArgs: [returnDebit['account_id']],
+    ))
+        .single;
+    final returnCreditAccount = (await db.query(
+      'accounts',
+      where: 'id = ?',
+      whereArgs: [returnCredit['account_id']],
+    ))
+        .single;
+    expect(returnDebitAccount['code'], '1300');
+    expect(returnCreditAccount['code'], '5200');
     final movements = await engine.movements(itemId: itemId);
     expect(movements, hasLength(2));
     expect(movements.map((movement) => movement.quantity),

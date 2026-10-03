@@ -25,6 +25,12 @@ class PurchaseEngine {
     if (cart.lines.isEmpty || cart.total <= 0) {
       throw ArgumentError('سلة المشتريات فارغة');
     }
+    if (cart.lines.any((line) =>
+        line.quantity <= 0 ||
+        !line.product.price.isFinite ||
+        line.product.price < 0)) {
+      throw ArgumentError('كمية أو تكلفة منتج الشراء غير صالحة');
+    }
     if (cart.lines.any((line) => !line.product.available)) {
       throw StateError('يوجد منتج غير متوفر في السلة');
     }
@@ -66,6 +72,7 @@ class PurchaseEngine {
             relatedModule: 'my_purchases',
             relatedEntityId: number,
           ),
+          capitalizeAsInventory: true,
         );
         await txn.insert(
           'purchase_orders',
@@ -105,13 +112,28 @@ class PurchaseEngine {
     PurchaseCartLine line,
     String reference,
   ) async {
-    final existing = await db.query(
-      'inventory_items',
-      columns: ['id'],
-      where: 'name = ? AND currency = ? AND active = 1',
-      whereArgs: [line.product.name, line.product.currency],
-      limit: 1,
-    );
+    final currency = line.product.currency.trim().toUpperCase();
+    var existing = <Map<String, Object?>>[];
+    if (line.product.inventoryItemId != null) {
+      final inventoryItemId = line.product.inventoryItemId!;
+      existing = await db.query(
+        'inventory_items',
+        where: 'id = ? AND active = 1',
+        whereArgs: [inventoryItemId],
+        limit: 1,
+      );
+      if (existing.isEmpty) {
+        throw StateError(
+            'صنف المخزون المرتبط بمنتج الشراء غير موجود أو غير نشط');
+      }
+    } else {
+      existing = await db.query(
+        'inventory_items',
+        where: 'name = ? AND currency = ? AND active = 1',
+        whereArgs: [line.product.name, currency],
+        limit: 1,
+      );
+    }
     final itemId = existing.isEmpty
         ? await db.insert('inventory_items', {
             'name': line.product.name,
@@ -120,13 +142,42 @@ class PurchaseEngine {
             'sale_price': line.product.price,
             'quantity': 0,
             'low_stock_threshold': 5,
-            'currency': line.product.currency,
+            'currency': currency,
             'active': 1,
           })
         : existing.single['id'] as int;
+    final itemRows = existing.isEmpty
+        ? await db.query(
+            'inventory_items',
+            where: 'id = ? AND active = 1',
+            whereArgs: [itemId],
+            limit: 1,
+          )
+        : existing;
+    final item = itemRows.single;
+    if ((item['currency']! as String).trim().toUpperCase() != currency) {
+      throw StateError('عملة صنف المخزون لا تطابق عملة الشراء');
+    }
+    final oldQuantity = (item['quantity']! as num).toDouble();
+    final oldCost = (item['cost_price']! as num).toDouble();
+    final nextQuantity = oldQuantity + line.quantity;
+    if (!oldQuantity.isFinite ||
+        !oldCost.isFinite ||
+        !nextQuantity.isFinite ||
+        nextQuantity <= 0 ||
+        !line.product.price.isFinite ||
+        line.product.price < 0) {
+      throw StateError('تعذر حساب متوسط تكلفة صنف ${line.product.name}');
+    }
+    final weightedAverage =
+        (oldQuantity * oldCost + line.quantity * line.product.price) /
+            nextQuantity;
+    if (!weightedAverage.isFinite || weightedAverage < 0) {
+      throw StateError('متوسط تكلفة صنف ${line.product.name} غير صالح');
+    }
     final changed = await db.rawUpdate(
-      'UPDATE inventory_items SET quantity = quantity + ?, cost_price = ? WHERE id = ?',
-      [line.quantity, line.product.price, itemId],
+      'UPDATE inventory_items SET quantity = ?, cost_price = ? WHERE id = ? AND active = 1',
+      [nextQuantity, weightedAverage, itemId],
     );
     if (changed != 1) throw StateError('تعذر تحديث مخزون ${line.product.name}');
     final current = await db.query(
