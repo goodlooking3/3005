@@ -83,6 +83,21 @@ class MarketplaceProduct {
       };
 }
 
+class PurchaseAdjustments {
+  final double shipping;
+  final double discount;
+  final double recoverableTax;
+  final double nonRecoverableTax;
+  const PurchaseAdjustments({
+    this.shipping = 0,
+    this.discount = 0,
+    this.recoverableTax = 0,
+    this.nonRecoverableTax = 0,
+  });
+  double get totalTax => recoverableTax + nonRecoverableTax;
+  bool get isZero => shipping == 0 && discount == 0 && totalTax == 0;
+}
+
 class PurchaseCartLine {
   final MarketplaceProduct product;
   final int quantity;
@@ -92,8 +107,10 @@ class PurchaseCartLine {
 
 class PurchaseCart {
   final List<PurchaseCartLine> lines;
-  const PurchaseCart(this.lines);
-  double get total => lines.fold(0, (sum, line) => sum + line.total);
+  final PurchaseAdjustments adjustments;
+  const PurchaseCart(this.lines, {this.adjustments = const PurchaseAdjustments()});
+  double get subtotal => lines.fold(0, (sum, line) => sum + line.total);
+  double get total => subtotal - adjustments.discount + adjustments.shipping + adjustments.totalTax;
   String get currency => lines.isEmpty ? 'SAR' : lines.first.product.currency;
 }
 
@@ -127,6 +144,10 @@ class PurchaseOrder {
   final String vendorName;
   final String walletName;
   final double total;
+  final double shipping;
+  final double discount;
+  final double recoverableTax;
+  final double nonRecoverableTax;
   final String currency;
   final String status;
   final DateTime createdAt;
@@ -138,6 +159,10 @@ class PurchaseOrder {
     required this.vendorName,
     required this.walletName,
     required this.total,
+    this.shipping = 0,
+    this.discount = 0,
+    this.recoverableTax = 0,
+    this.nonRecoverableTax = 0,
     required this.currency,
     this.status = 'paid',
     required this.createdAt,
@@ -150,6 +175,10 @@ class PurchaseOrder {
         'vendor_name': vendorName,
         'wallet_name': walletName,
         'total': total,
+        'shipping': shipping,
+        'discount': discount,
+        'recoverable_tax': recoverableTax,
+        'nonrecoverable_tax': nonRecoverableTax,
         'currency': currency,
         'status': status,
         'created_at': createdAt.toIso8601String(),
@@ -162,6 +191,10 @@ class PurchaseOrder {
         vendorName: map['vendor_name']! as String,
         walletName: map['wallet_name']! as String,
         total: (map['total']! as num).toDouble(),
+        shipping: (map['shipping'] as num? ?? 0).toDouble(),
+        discount: (map['discount'] as num? ?? 0).toDouble(),
+        recoverableTax: (map['recoverable_tax'] as num? ?? 0).toDouble(),
+        nonRecoverableTax: (map['nonrecoverable_tax'] as num? ?? 0).toDouble(),
         currency: map['currency']! as String,
         status: map['status']! as String,
         createdAt: DateTime.parse(map['created_at']! as String),

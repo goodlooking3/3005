@@ -88,9 +88,11 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
     if (vendor == null || cart.isEmpty || _checkingOut) return;
     setState(() { _checkingOut = true; _error = null; });
     try {
+      final adjustments = await _askAdjustments();
+      if (adjustments == null) return;
       final receipt = await engine.checkout(
           vendor: vendor!,
-          cart: PurchaseCart(List.of(cart)),
+          cart: PurchaseCart(List.of(cart), adjustments: adjustments),
           walletName: 'محفظتي',
           walletAccount: 'محفظتي');
       if (!mounted) return;
@@ -102,6 +104,52 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
     } finally {
       if (mounted) setState(() => _checkingOut = false);
     }
+  }
+
+  Future<PurchaseAdjustments?> _askAdjustments() async {
+    final shipping = TextEditingController();
+    final discount = TextEditingController();
+    final recoverableTax = TextEditingController();
+    final nonRecoverableTax = TextEditingController();
+    double value(TextEditingController c) => double.tryParse(c.text.trim()) ?? 0;
+    final result = await showDialog<PurchaseAdjustments>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('تسويات الشراء'),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            for (final entry in [
+              (shipping, 'الشحن والتكاليف الواردة'),
+              (discount, 'الخصم التجاري'),
+              (recoverableTax, 'ضريبة مدخلات قابلة للاسترداد'),
+              (nonRecoverableTax, 'ضريبة غير قابلة للاسترداد'),
+            ])
+              TextField(
+                controller: entry.$1,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(labelText: entry.$2, suffixText: cart.isEmpty ? '' : cart.first.product.currency),
+              ),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, PurchaseAdjustments(
+              shipping: value(shipping),
+              discount: value(discount),
+              recoverableTax: value(recoverableTax),
+              nonRecoverableTax: value(nonRecoverableTax),
+            )),
+            child: const Text('متابعة'),
+          ),
+        ],
+      ),
+    );
+    shipping.dispose();
+    discount.dispose();
+    recoverableTax.dispose();
+    nonRecoverableTax.dispose();
+    return result;
   }
 
   @override

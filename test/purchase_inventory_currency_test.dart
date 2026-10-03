@@ -123,6 +123,26 @@ void main() {
     expect(first.order.number, isNot(second.order.number));
   });
 
+  test('purchase adjustments land in inventory and reclassify recoverable tax', () async {
+    const product = MarketplaceProduct(vendorId: 1, name: 'صنف تسويات', category: 'تجزئة', price: 100, currency: 'SAR');
+    final receipt = await PurchaseEngine().checkout(
+      vendor: const Vendor(name: 'مورد التسويات', category: 'تجزئة'),
+      cart: const PurchaseCart(
+        [PurchaseCartLine(product: product, quantity: 2)],
+        adjustments: PurchaseAdjustments(shipping: 20, discount: 10, recoverableTax: 15, nonRecoverableTax: 5),
+      ),
+      walletName: 'محفظة التسويات',
+      walletAccount: 'محفظة التسويات',
+    );
+    final db = await LocalDatabase.instance.database;
+    final item = (await db.query('inventory_items', where: 'name = ?', whereArgs: [product.name])).single;
+    expect(item['cost_price'], 107.5);
+    final order = (await db.query('purchase_orders', where: 'number = ?', whereArgs: [receipt.order.number])).single;
+    expect(order['total'], 230.0);
+    expect(order['recoverable_tax'], 15.0);
+    expect((await db.query('accounts', where: 'code = ?', whereArgs: ['1410'])), hasLength(1));
+  });
+
   test('currency repository requires and applies a dated exchange rate',
       () async {
     final repository = CurrencyRepository();

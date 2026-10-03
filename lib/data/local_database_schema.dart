@@ -83,5 +83,12 @@ class LocalDatabaseSchema {
         'INTEGER REFERENCES journal_entries(id)',
       );
     }
+    if (oldVersion < 25) {
+      await _addColumnIfMissing(db, 'purchase_orders', 'shipping', 'REAL NOT NULL DEFAULT 0');
+      await _addColumnIfMissing(db, 'purchase_orders', 'discount', 'REAL NOT NULL DEFAULT 0');
+      await _addColumnIfMissing(db, 'purchase_orders', 'recoverable_tax', 'REAL NOT NULL DEFAULT 0');
+      await _addColumnIfMissing(db, 'purchase_orders', 'nonrecoverable_tax', 'REAL NOT NULL DEFAULT 0');
+      await _addColumnIfMissing(db, 'purchase_order_lines', 'unit_cost', 'REAL NOT NULL DEFAULT 0');
+    }
   }
 }
