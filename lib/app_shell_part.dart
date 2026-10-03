@@ -96,7 +96,6 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   Future<void> _hydrateAccounting() async {
-    await accounting.seedDefaultAccounts();
     final accounts = await accounting.accounts();
     if (mounted) setState(() => liveAccounts = accounts);
   }

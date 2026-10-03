@@ -1,5 +1,5 @@
 import 'package:sqflite/sqflite.dart';
-
+import 'package:flutter/foundation.dart' show kDebugMode;
 import '../core/accounting.dart';
 import '../core/connector_models.dart';
 import '../core/models.dart';
@@ -770,11 +770,18 @@ class AccountingRepository {
     );
   }
 
-  Future<void> seedDefaultAccounts() async {
+  Future<void> seedDemoAccountsForDevelopment({
+    required bool explicitlyEnabled,
+  }) async {
+    if (!kDebugMode || !explicitlyEnabled) {
+      throw StateError('بيانات العرض متاحة بتفعيل صريح في وضع التطوير فقط');
+    }
     final existing = await (await _db).rawQuery(
-      'SELECT COUNT(*) count FROM accounts',
+      'SELECT COUNT(*) count FROM accounts WHERE is_group = 0',
     );
-    if ((existing.first['count'] as int) > 0) return;
+    if ((existing.first['count'] as int) > 0) {
+      throw StateError('لا تُضاف بيانات العرض إلى دليل يحتوي حسابات فعلية');
+    }
     for (final account in demoAccounts) {
       await upsertAccount(account);
     }

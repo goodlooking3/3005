@@ -31,7 +31,6 @@ class ChartOfAccountsController extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
-      await repository.seedDefaultAccounts();
       await ChartAccountCatalog(repository).ensureDefaults();
       _allAccounts = await repository.accounts(includeInactive: true);
     } catch (exception) {
