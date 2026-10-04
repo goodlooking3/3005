@@ -129,24 +129,39 @@ class _SalesReturnDetailsScreenState extends State<SalesReturnDetailsScreen> {
     );
     if (confirmed != true || !mounted) return;
     setState(() => submitting = true);
+    late final int journal;
     try {
-      final journal = await widget.engine.returnSale(
+      journal = await widget.engine.returnSale(
         invoiceNumber: number,
         quantitiesByLineId: selected,
       );
-      final creditNoteLines = <CreditNoteLine>[];
-      for (final line in lines) {
-        final quantity = selected[line['id']! as int] ?? 0;
-        if (quantity <= 0) continue;
-        final unitPrice = _num(line['unit_price']);
-        creditNoteLines.add(CreditNoteLine(
-          itemName: line['item_name']! as String,
-          quantity: quantity,
-          unitPrice: unitPrice,
-          total: quantity * unitPrice,
-        ));
+    } catch (_) {
+      if (mounted) {
+        setState(() => submitting = false);
+        _message(
+            'تعذر ترحيل المرتجع. تحقق من الكمية وحالة الفاتورة ثم حاول مجددًا',
+            error: true);
       }
-      final pdf = await ExportService.buildCreditNotePdf(
+      return;
+    }
+    if (!mounted) return;
+
+    final creditNoteLines = <CreditNoteLine>[];
+    for (final line in lines) {
+      final quantity = selected[line['id']! as int] ?? 0;
+      if (quantity <= 0) continue;
+      final unitPrice = _num(line['unit_price']);
+      creditNoteLines.add(CreditNoteLine(
+        itemName: line['item_name']! as String,
+        quantity: quantity,
+        unitPrice: unitPrice,
+        total: quantity * unitPrice,
+      ));
+    }
+
+    late final Uint8List pdf;
+    try {
+      pdf = await ExportService.buildCreditNotePdf(
         invoiceNumber: number,
         customerName: widget.invoice['customer_name']! as String,
         currency: widget.invoice['currency']! as String,
@@ -155,27 +170,31 @@ class _SalesReturnDetailsScreenState extends State<SalesReturnDetailsScreen> {
         total: returnTotal,
         lines: creditNoteLines,
       );
-      if (!mounted) return;
-      try {
-        await Printing.layoutPdf(
-          name: 'إشعار دائن CN-$number-$journal.pdf',
-          onLayout: (_) async => pdf,
-        );
-        _message('تم ترحيل المرتجع وطباعة إشعار الدائن — القيد $journal');
-      } catch (_) {
-        _message(
-            'تم ترحيل المرتجع، لكن تعذر فتح نافذة الطباعة. يمكنك إعادة الطباعة من سجل المستندات.');
-      }
-      await _offerSharing(pdf, journal);
-      Navigator.pop(context);
-    } catch (error) {
+    } catch (_) {
       if (mounted) {
-        setState(() => submitting = false);
-        _message(
-            'تعذر ترحيل المرتجع. تحقق من الكمية وحالة الفاتورة ثم حاول مجددًا',
-            error: true);
+        _message('تم ترحيل المرتجع — القيد $journal — لكن تعذر إنشاء ملف إشعار الدائن.');
+        Navigator.pop(context);
       }
+      return;
     }
+    if (!mounted) return;
+
+    var printOptionsOpened = false;
+    try {
+      await Printing.layoutPdf(
+        name: 'إشعار دائن CN-$number-$journal.pdf',
+        onLayout: (_) async => pdf,
+      );
+      printOptionsOpened = true;
+    } catch (_) {
+      // The return is already committed; offer the generated PDF through sharing.
+    }
+    if (!mounted) return;
+    _message(printOptionsOpened
+        ? 'تم ترحيل المرتجع وتجهيز إشعار الدائن وفتح خيارات الطباعة — القيد $journal.'
+        : 'تم ترحيل المرتجع — القيد $journal — وتعذر فتح الطباعة؛ يمكنك محاولة المشاركة.');
+    await _offerSharing(pdf, journal);
+    if (mounted) Navigator.pop(context);
   }
 
   Future<void> _offerSharing(Uint8List pdf, int journalId) async {
@@ -217,13 +236,10 @@ class _SalesReturnDetailsScreenState extends State<SalesReturnDetailsScreen> {
       await Printing.sharePdf(
           bytes: pdf, filename: 'إشعار-دائن-$number-$journalId.pdf');
       if (mounted)
-        _message(channel == 'email'
-            ? 'تم فتح المشاركة للبريد الإلكتروني.'
-            : 'تم فتح المشاركة لواتساب. راجع المستلم قبل الإرسال.');
-    } catch (error) {
+        _message('تم فتح قائمة المشاركة. اختر التطبيق المقصود وراجع المستلم قبل الإرسال.');
+    } catch (_) {
       if (mounted)
-        _message(
-            'تم حفظ المرتجع، لكن تعذر فتح المشاركة. يمكنك إعادة المشاركة من سجل المستندات',
+        _message('تم ترحيل المرتجع، لكن تعذر فتح خيارات مشاركة إشعار الدائن.',
             error: true);
     }
   }

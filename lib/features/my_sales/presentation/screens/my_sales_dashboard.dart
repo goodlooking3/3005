@@ -40,8 +40,8 @@ class _MySalesDashboardState extends State<MySalesDashboard> {
       final loaded = await inventory.items();
       final totals = await sales.summary();
       if (mounted) setState(() { items = loaded; summary = totals; loading = false; });
-    } catch (value) {
-      if (mounted) setState(() { loading = false; error = 'تعذر تحميل لوحة المبيعات: $value'; });
+    } catch (_) {
+      if (mounted) setState(() { loading = false; error = 'تعذر تحميل لوحة المبيعات. اضغط تحديث وحاول مجددًا.'; });
     }
   }
 
@@ -110,11 +110,16 @@ class _MySalesDashboardState extends State<MySalesDashboard> {
           ),
           FilledButton.icon(
             onPressed: () async {
-              await Navigator.push(
+              final invoiceNumber = await Navigator.push<String>(
                   context,
                   MaterialPageRoute(
                       builder: (_) => const SalesInvoiceScreen()));
-              _load();
+              await _load();
+              if (mounted && invoiceNumber != null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('تم ترحيل الفاتورة $invoiceNumber بنجاح')),
+                );
+              }
             },
             icon: const Icon(Icons.point_of_sale),
             label: const Text('فاتورة بيع'),

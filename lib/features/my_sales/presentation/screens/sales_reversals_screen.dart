@@ -99,7 +99,9 @@ class _SalesReversalsScreenState extends State<SalesReversalsScreen> {
           title: const Text('المرتجعات والإلغاء'),
           actions: [
             IconButton(
-                onPressed: _load, icon: const Icon(Icons.refresh_rounded))
+                onPressed: loading ? null : _load,
+                tooltip: 'تحديث الفواتير',
+                icon: const Icon(Icons.refresh_rounded))
           ],
         ),
         body: RefreshIndicator(
@@ -116,7 +118,7 @@ class _SalesReversalsScreenState extends State<SalesReversalsScreen> {
                       trailing: IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
                     )),
                     const SizedBox(height: 18),
-                    if (invoices.isEmpty)
+                    if (invoices.isEmpty && error == null)
                       _emptyState()
                     else
                       ...invoices.map(_invoiceCard),
@@ -245,7 +247,7 @@ class _SalesReversalsScreenState extends State<SalesReversalsScreen> {
         'partially_returned' => 'مرتجع جزئي',
         'returned' => 'مرتجعة',
         'cancelled' => 'ملغاة',
-        _ => value
+        _ => 'حالة غير معروفة'
       };
   String _date(DateTime value) =>
       '${value.year}/${value.month.toString().padLeft(2, '0')}/${value.day.toString().padLeft(2, '0')}';

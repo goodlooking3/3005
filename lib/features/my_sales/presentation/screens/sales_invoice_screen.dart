@@ -59,13 +59,35 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
       final loadedParties = await accounting.parties();
       final loadedCurrencies = await currencies.activeCurrencies();
       if (!mounted) return;
+      if (loadedCurrencies.isEmpty) {
+        setState(() {
+          items = loadedItems;
+          accounts = loadedAccounts;
+          parties = loadedParties;
+          currencyOptions = const [];
+          error = 'لا توجد عملات نشطة لإصدار الفاتورة. فعّل عملة واحدة على الأقل ثم أعد المحاولة.';
+          loading = false;
+        });
+        return;
+      }
+      final selectedCurrency = loadedCurrencies.any((option) =>
+              option.code.trim().toUpperCase() == currency.toUpperCase())
+          ? currency.toUpperCase()
+          : loadedCurrencies.first.code.trim().toUpperCase();
       setState(() {
         items = loadedItems;
         accounts = loadedAccounts;
         parties = loadedParties;
         currencyOptions = loadedCurrencies;
-        cashAccountId = _firstAccount(AccountKind.cash, AccountKind.bank)?.id;
-        salesAccountId = _firstAccount(AccountKind.revenue)?.id;
+        currency = selectedCurrency;
+        cashAccountId = _firstAccount(
+                first: AccountKind.cash,
+                second: AccountKind.bank,
+                currency: selectedCurrency)
+            ?.id;
+        salesAccountId = _firstAccount(
+                first: AccountKind.revenue, currency: selectedCurrency)
+            ?.id;
         loading = false;
       });
     } catch (value) {
@@ -77,9 +99,16 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
     }
   }
 
-  Account? _firstAccount(AccountKind first, [AccountKind? second]) {
+  Account? _firstAccount({
+    required AccountKind first,
+    AccountKind? second,
+    required String currency,
+  }) {
     for (final account in accounts) {
-      if (account.kind == first || (second != null && account.kind == second)) {
+      if (account.active &&
+          !account.isGroup &&
+          (account.kind == first || (second != null && account.kind == second)) &&
+          _supportsCurrency(account, currency)) {
         return account;
       }
     }
@@ -100,7 +129,7 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
       0, (total, item) => total + _quantity(item) * item.salePrice);
   void _setCurrency(String value) {
     setState(() {
-      currency = value;
+      currency = value.trim().toUpperCase();
       if (!_accountSupportsCurrency(cashAccountId, currency)) {
         cashAccountId = null;
       }
@@ -119,11 +148,16 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
     if (accountId == null) return false;
     for (final account in accounts) {
       if (account.id == accountId) {
-        return account.supportedCurrencies.contains(value);
+        return _supportsCurrency(account, value);
       }
     }
     return false;
   }
+
+  bool _supportsCurrency(Account account, String value) =>
+      account.supportedCurrencies.any(
+        (currency) => currency.trim().toUpperCase() == value.toUpperCase(),
+      );
 
   List<InventoryItem> get cart =>
       items.where((item) => quantities.containsKey(item.id)).toList();
@@ -139,9 +173,20 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
 
   double _quantity(InventoryItem item) => quantities[item.id] ?? 0;
 
+  String _formatQuantity(double value) => value.truncateToDouble() == value
+      ? value.toStringAsFixed(0)
+      : value
+          .toStringAsFixed(2)
+          .replaceFirst(RegExp(r'0+$'), '')
+          .replaceFirst(RegExp(r'\.$'), '');
+
   void _add(InventoryItem item) {
-    if (item.id == null || _quantity(item) >= item.quantity) return;
-    setState(() => quantities[item.id!] = _quantity(item) + 1);
+    if (item.id == null) return;
+    final current = _quantity(item);
+    final remaining = item.quantity - current;
+    if (remaining <= 0) return;
+    final increment = remaining >= 1 ? 1.0 : remaining;
+    setState(() => quantities[item.id!] = current + increment);
   }
 
   void _remove(InventoryItem item) {
@@ -173,10 +218,11 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
       loading = true;
       error = null;
     });
+    final invoiceNumber = 'SALE-${DateTime.now().millisecondsSinceEpoch}';
     try {
       await SalesEngine().completeSale(
         invoice: SalesInvoice(
-          number: 'SALE-${DateTime.now().millisecondsSinceEpoch}',
+          number: invoiceNumber,
           customerName: customer.text.trim(),
           paymentAccount:
               accounts.firstWhere((a) => a.id == cashAccountId).name,
@@ -187,7 +233,7 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
         cashAccountId: cashAccountId!,
         salesAccountId: salesAccountId!,
       );
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) Navigator.pop(context, invoiceNumber);
     } catch (_) {
       if (mounted)
         setState(() {
@@ -199,35 +245,48 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (items.isEmpty && (loading || error != null))
+    if (loading && items.isEmpty)
       return Scaffold(
         body: Center(
-          child: loading
-              ? const CircularProgressIndicator()
-              : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(error!, textAlign: TextAlign.center),
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: _load,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('إعادة المحاولة'),
-                    ),
-                  ],
+          child: const CircularProgressIndicator(),
+        ),
+      );
+    if (!loading && currencyOptions.isEmpty)
+      return Scaffold(
+        appBar: AppBar(title: const Text('فاتورة بيع جديدة')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(error ?? 'لا توجد عملات نشطة لإصدار الفاتورة.',
+                    textAlign: TextAlign.center),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _load,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('إعادة المحاولة'),
                 ),
+              ],
+            ),
+          ),
         ),
       );
     final cashAccounts = accounts
         .where((a) =>
+            a.active &&
+            !a.isGroup &&
             (a.kind == AccountKind.cash || a.kind == AccountKind.bank) &&
-            a.supportedCurrencies.contains(currency))
+            _supportsCurrency(a, currency))
         .toList();
     final revenueAccounts =
         accounts
             .where((a) =>
+                a.active &&
+                !a.isGroup &&
                 a.kind == AccountKind.revenue &&
-                a.supportedCurrencies.contains(currency))
+                _supportsCurrency(a, currency))
             .toList();
     return Scaffold(
       appBar: AppBar(title: const Text('فاتورة بيع جديدة')),
@@ -252,26 +311,23 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
           final compact = constraints.maxWidth < 520;
           final fields = [
             DropdownButtonFormField<String>(
+                  key: const ValueKey('sale-currency'),
                   value: currency,
                   decoration: const InputDecoration(labelText: 'العملة'),
-                  items: (currencyOptions.isEmpty
-                          ? [
-                              const CurrencyOption(
-                                  code: 'SAR',
-                                  name: 'ريال سعودي',
-                                  symbol: 'ر.س')
-                            ]
-                          : currencyOptions)
+                  items: currencyOptions
                       .map((item) => DropdownMenuItem(
                           value: item.code,
                           child: Text('${item.code} — ${item.name}')))
                       .toList(),
-                  onChanged: (value) => _setCurrency(value ?? 'SAR')),
-            DropdownButtonFormField<int>(
-                value: cashAccountId,
+                  onChanged: (value) {
+                    if (value != null) _setCurrency(value);
+                  }),
+        DropdownButtonFormField<int>(
+            key: const ValueKey('sale-cash-account'),
+            value: cashAccountId,
                 decoration: const InputDecoration(labelText: 'حساب التحصيل'),
                 items: cashAccounts
-                    .map((a) => DropdownMenuItem(value: a.id, child: Text(a.name)))
+                    .map((a) => DropdownMenuItem(value: a.id, child: Text('${a.code} — ${a.name}')))
                     .toList(),
                 onChanged: (value) => setState(() => cashAccountId = value)),
           ];
@@ -281,10 +337,12 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
         }),
         const SizedBox(height: 8),
         DropdownButtonFormField<int>(
+            key: const ValueKey('sale-revenue-account'),
             value: salesAccountId,
             decoration: const InputDecoration(labelText: 'حساب المبيعات'),
             items: revenueAccounts
-                .map((a) => DropdownMenuItem(value: a.id, child: Text(a.name)))
+                .map((a) => DropdownMenuItem(
+                    value: a.id, child: Text('${a.code} — ${a.name}')))
                 .toList(),
             onChanged: (value) => setState(() => salesAccountId = value)),
         const SizedBox(height: 16),
@@ -293,12 +351,26 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
             decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.search),
                 labelText: 'ابحث عن صنف أو SKU')),
+        if (filteredItems.isEmpty)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.search_off_outlined),
+              title: Text(search.text.trim().isEmpty
+                  ? 'لا توجد أصناف متاحة بهذه العملة'
+                  : 'لا توجد أصناف تطابق البحث'),
+              subtitle: const Text('جرّب عملة أخرى أو غيّر عبارة البحث.'),
+            ),
+          ),
         ...filteredItems.map((item) => ListTile(
             title: Text(item.name),
-            subtitle:
-                Text('${item.sku} — متاح ${item.quantity} ${item.currency}'),
+            subtitle: Text(
+                '${item.sku} — متاح ${_formatQuantity(item.quantity)} ${item.currency}'),
             trailing: IconButton(
-                onPressed: () => _add(item),
+                key: ValueKey('sale-add-${item.id}'),
+                tooltip: 'إضافة ${item.name} إلى الفاتورة',
+                onPressed: _quantity(item) >= item.quantity
+                    ? null
+                    : () => _add(item),
                 icon: const Icon(Icons.add_shopping_cart)))),
         const Divider(),
         const Text('بنود الفاتورة',
@@ -306,11 +378,11 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
         ...cart.map((item) => ListTile(
             title: Text(item.name),
             subtitle: Text(
-                '${(_quantity(item) * item.salePrice).toStringAsFixed(2)} $currency'),
+                '${_formatQuantity(_quantity(item))} × ${item.salePrice.toStringAsFixed(2)} = ${(_quantity(item) * item.salePrice).toStringAsFixed(2)} $currency'),
             leading: IconButton(
                 onPressed: () => _remove(item),
                 icon: const Icon(Icons.remove_circle_outline)),
-            trailing: Text(_quantity(item).toStringAsFixed(0)))),
+            trailing: Text(_formatQuantity(_quantity(item))))),
         const SizedBox(height: 12),
         Card(
           child: ListTile(
