@@ -313,11 +313,13 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
             DropdownButtonFormField<String>(
                   key: const ValueKey('sale-currency'),
                   value: currency,
+                  isExpanded: true,
                   decoration: const InputDecoration(labelText: 'العملة'),
                   items: currencyOptions
                       .map((item) => DropdownMenuItem(
                           value: item.code,
-                          child: Text('${item.code} — ${item.name}')))
+                          child: Text('${item.code} — ${item.name}',
+                              maxLines: 1, overflow: TextOverflow.ellipsis)))
                       .toList(),
                   onChanged: (value) {
                     if (value != null) _setCurrency(value);
@@ -325,9 +327,13 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
         DropdownButtonFormField<int>(
             key: const ValueKey('sale-cash-account'),
             value: cashAccountId,
+            isExpanded: true,
                 decoration: const InputDecoration(labelText: 'حساب التحصيل'),
                 items: cashAccounts
-                    .map((a) => DropdownMenuItem(value: a.id, child: Text('${a.code} — ${a.name}')))
+                    .map((a) => DropdownMenuItem(
+                        value: a.id,
+                        child: Text('${a.code} — ${a.name}',
+                            maxLines: 1, overflow: TextOverflow.ellipsis)))
                     .toList(),
                 onChanged: (value) => setState(() => cashAccountId = value)),
           ];
@@ -339,10 +345,13 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
         DropdownButtonFormField<int>(
             key: const ValueKey('sale-revenue-account'),
             value: salesAccountId,
+            isExpanded: true,
             decoration: const InputDecoration(labelText: 'حساب المبيعات'),
             items: revenueAccounts
                 .map((a) => DropdownMenuItem(
-                    value: a.id, child: Text('${a.code} — ${a.name}')))
+                    value: a.id,
+                    child: Text('${a.code} — ${a.name}',
+                        maxLines: 1, overflow: TextOverflow.ellipsis)))
                 .toList(),
             onChanged: (value) => setState(() => salesAccountId = value)),
         const SizedBox(height: 16),

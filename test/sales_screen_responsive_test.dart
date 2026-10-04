@@ -96,6 +96,7 @@ void main() {
     tester.view.physicalSize = const Size(320, 850);
     tester.view.devicePixelRatio = 1;
     await tester.pumpWidget(const MaterialApp(home: SalesInvoiceScreen()));
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
 
     final cashField = tester.widget<DropdownButtonFormField<int>>(
@@ -140,6 +141,7 @@ void main() {
     final db = await LocalDatabase.instance.database;
     await db.update('currencies', {'active': 0});
     await tester.pumpWidget(const MaterialApp(home: SalesInvoiceScreen()));
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('لا توجد عملات نشطة'), findsOneWidget);
@@ -159,6 +161,7 @@ void main() {
       whereArgs: ['USD'],
     );
     await tester.pumpWidget(const MaterialApp(home: SalesInvoiceScreen()));
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
 
     final currencyField = tester.widget<DropdownButtonFormField<String>>(
@@ -217,6 +220,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: SalesReturnDetailsScreen(invoice: invoice, engine: SalesEngine()),
     ));
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
 
     expect(find.text('صنف اختبار المرتجع'), findsOneWidget);
