@@ -376,9 +376,13 @@ class _AccountingWorkspaceScreenState extends State<AccountingWorkspaceScreen>
                   try {
                     await chart.setActive(account, !account.active);
                   } catch (error) {
-                    if (mounted)
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                          content: Text('تعذر تحديث حالة الحساب. حاول مجددًا')));
+                    if (mounted) {
+                      final message = error.toString().contains('حسابات فرعية نشطة')
+                          ? 'لا يمكن إيقاف حساب له حسابات فرعية نشطة'
+                          : 'تعذر تحديث حالة الحساب. حاول مجددًا';
+                      ScaffoldMessenger.of(context)
+                          .showSnackBar(SnackBar(content: Text(message)));
+                    }
                   }
                 }
               },
