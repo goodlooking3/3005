@@ -230,8 +230,13 @@ void main() {
       home: SalesReturnDetailsScreen(invoice: invoice, engine: SalesEngine()),
     ));
     await tester.pump(const Duration(milliseconds: 400));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 500)),
+    );
     await tester.pumpAndSettle();
 
+    expect(find.text('تعذر تحميل أصناف الفاتورة. اضغط تحديث وحاول مجددًا'),
+        findsNothing);
     expect(find.text('صنف اختبار المرتجع'), findsOneWidget);
     expect(find.text('ترحيل المرتجع الجزئي'), findsOneWidget);
     expect(tester.takeException(), isNull);
