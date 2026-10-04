@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:wasel/data/local_database.dart';
 import 'package:wasel/features/my_sales/data/sales_engine.dart';
@@ -102,9 +101,10 @@ void main() {
     final cashField = tester.widget<DropdownButtonFormField<int>>(
       find.byKey(const ValueKey('sale-cash-account')),
     );
+    final cashDropdown = _dropdownButton(tester, 'sale-cash-account');
     expect(cashField.initialValue, cashSarId);
-    expect(cashField.items!.map((item) => item.value), contains(cashMultiCurrencyId));
-    expect(cashField.items!.map((item) => item.value), isNot(contains(cashGroupId)));
+    expect(cashDropdown.items!.map((item) => item.value), contains(cashMultiCurrencyId));
+    expect(cashDropdown.items!.map((item) => item.value), isNot(contains(cashGroupId)));
     expect(tester.takeException(), isNull);
 
     for (final itemId in [sarItemId, fractionalItemId]) {
@@ -122,11 +122,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('صنف الدولار'), findsOneWidget);
     expect(find.text('صنف الريال'), findsNothing);
-    final usdCashField = tester.widget<DropdownButtonFormField<int>>(
-      find.byKey(const ValueKey('sale-cash-account')),
-    );
-    expect(usdCashField.items!.map((item) => item.value), contains(cashMultiCurrencyId));
-    expect(usdCashField.items!.map((item) => item.value), isNot(contains(cashSarId)));
+    final usdCashDropdown = _dropdownButton(tester, 'sale-cash-account');
+    expect(usdCashDropdown.items!.map((item) => item.value), contains(cashMultiCurrencyId));
+    expect(usdCashDropdown.items!.map((item) => item.value), isNot(contains(cashSarId)));
     expect(tester.takeException(), isNull);
 
     tester.view.physicalSize = const Size(1280, 900);
@@ -234,6 +232,14 @@ void main() {
     tester.view.resetDevicePixelRatio();
   });
 }
+
+DropdownButton<int> _dropdownButton(WidgetTester tester, String key) =>
+    tester.widget<DropdownButton<int>>(
+      find.descendant(
+        of: find.byKey(ValueKey(key)),
+        matching: find.byType(DropdownButton<int>),
+      ),
+    );
 
 Future<int> _addAccount(
   Database db, {
