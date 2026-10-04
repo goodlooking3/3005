@@ -208,6 +208,15 @@ void main() {
       'unit_cost': 4.0,
       'line_total': 18.0,
     });
+    final loadedLines = await db.rawQuery('''
+      SELECT sil.id, sil.item_name, sil.quantity sold_quantity, sil.unit_price,
+        sil.unit_cost, ii.quantity current_stock,
+        COALESCE((SELECT SUM(srl.quantity) FROM sales_return_lines srl WHERE srl.invoice_line_id = sil.id), 0) returned_quantity
+      FROM sales_invoice_lines sil
+      JOIN inventory_items ii ON ii.id = sil.item_id
+      WHERE sil.invoice_number = ? ORDER BY sil.id ASC
+    ''', [invoiceNumber]);
+    expect(loadedLines, hasLength(1));
     final invoice = (await db.query(
       'sales_invoices',
       where: 'number = ?',
