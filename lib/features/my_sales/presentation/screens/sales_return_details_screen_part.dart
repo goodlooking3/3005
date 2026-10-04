@@ -51,7 +51,6 @@ class _SalesReturnDetailsScreenState extends State<SalesReturnDetailsScreen> {
       JOIN inventory_items ii ON ii.id = sil.item_id
       WHERE sil.invoice_number = ? ORDER BY sil.id ASC
     ''', [number]);
-      debugPrint('sales return detail debug: invoice=$number rows=${loaded.length}');
       for (final line in loaded) {
         final id = line['id']! as int;
         controllers[id] = TextEditingController(text: '0');
@@ -63,8 +62,7 @@ class _SalesReturnDetailsScreenState extends State<SalesReturnDetailsScreen> {
           loading = false;
           error = null;
         });
-    } catch (exception) {
-      debugPrint('sales return detail debug: $exception');
+    } catch (_) {
       if (mounted)
         setState(() {
           loading = false;

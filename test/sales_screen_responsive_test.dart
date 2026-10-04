@@ -237,6 +237,10 @@ void main() {
 
     expect(find.text('تعذر تحميل أصناف الفاتورة. اضغط تحديث وحاول مجددًا'),
         findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('صنف اختبار المرتجع'),
+      250,
+    );
     expect(find.text('صنف اختبار المرتجع'), findsOneWidget);
     expect(find.text('ترحيل المرتجع الجزئي'), findsOneWidget);
     expect(tester.takeException(), isNull);
