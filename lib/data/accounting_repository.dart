@@ -464,7 +464,7 @@ class AccountingRepository {
       if (rows.isEmpty || (rows.single['active'] as int? ?? 0) != 1) {
         throw StateError('الطرف المرتبط غير موجود أو غير نشط');
       }
-      if (rows.single['account_id'] as int? != line.accountId) {
+      if ((rows.single['account_id'] as int?) != line.accountId) {
         throw StateError('الحساب التحليلي للطرف لا يطابق حساب القيد');
       }
     }
