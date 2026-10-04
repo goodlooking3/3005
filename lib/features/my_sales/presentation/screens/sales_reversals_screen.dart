@@ -20,6 +20,7 @@ class _SalesReversalsScreenState extends State<SalesReversalsScreen> {
   final engine = SalesEngine();
   List<Map<String, Object?>> invoices = [];
   bool loading = true;
+  bool cancelling = false;
   String? error;
 
   @override
@@ -69,6 +70,7 @@ class _SalesReversalsScreenState extends State<SalesReversalsScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
+    setState(() => cancelling = true);
     try {
       final journalId = await engine.cancelSale(
         invoiceNumber: number,
@@ -80,6 +82,8 @@ class _SalesReversalsScreenState extends State<SalesReversalsScreen> {
       await _load();
     } catch (error) {
       if (mounted) _error();
+    } finally {
+      if (mounted) setState(() => cancelling = false);
     }
   }
 
@@ -195,9 +199,14 @@ class _SalesReversalsScreenState extends State<SalesReversalsScreen> {
               Align(
                   alignment: AlignmentDirectional.centerEnd,
                   child: TextButton.icon(
-                      onPressed: () => _cancel(invoice),
-                      icon: const Icon(Icons.block_outlined, size: 18),
-                      label: const Text('إلغاء الفاتورة'))),
+                      onPressed: cancelling ? null : () => _cancel(invoice),
+                      icon: cancelling
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.block_outlined, size: 18),
+                      label: Text(cancelling ? 'جارٍ الإلغاء...' : 'إلغاء الفاتورة'))),
             ] else if (invoice['reversed_at'] != null)
               Padding(
                   padding: const EdgeInsets.only(top: 10),

@@ -18,6 +18,7 @@ class _SalesReturnDetailsScreenState extends State<SalesReturnDetailsScreen> {
   final controllers = <int, TextEditingController>{};
   bool loading = true;
   bool submitting = false;
+  String? error;
 
   String get number => widget.invoice['number']! as String;
 
@@ -34,8 +35,15 @@ class _SalesReturnDetailsScreenState extends State<SalesReturnDetailsScreen> {
   }
 
   Future<void> _loadLines() async {
-    final db = await LocalDatabase.instance.database;
-    final loaded = await db.rawQuery('''
+    if (mounted) {
+      setState(() {
+        loading = true;
+        error = null;
+      });
+    }
+    try {
+      final db = await LocalDatabase.instance.database;
+      final loaded = await db.rawQuery('''
       SELECT sil.id, sil.item_name, sil.quantity sold_quantity, sil.unit_price,
         sil.unit_cost, ii.quantity current_stock,
         COALESCE((SELECT SUM(srl.quantity) FROM sales_return_lines srl WHERE srl.invoice_line_id = sil.id), 0) returned_quantity
@@ -43,16 +51,24 @@ class _SalesReturnDetailsScreenState extends State<SalesReturnDetailsScreen> {
       JOIN inventory_items ii ON ii.id = sil.item_id
       WHERE sil.invoice_number = ? ORDER BY sil.id ASC
     ''', [number]);
-    for (final line in loaded) {
-      final id = line['id']! as int;
-      controllers[id] = TextEditingController(text: '0');
-      quantities[id] = 0;
+      for (final line in loaded) {
+        final id = line['id']! as int;
+        controllers[id] = TextEditingController(text: '0');
+        quantities[id] = 0;
+      }
+      if (mounted)
+        setState(() {
+          lines = loaded;
+          loading = false;
+          error = null;
+        });
+    } catch (_) {
+      if (mounted)
+        setState(() {
+          loading = false;
+          error = 'تعذر تحميل أصناف الفاتورة. اضغط تحديث وحاول مجددًا';
+        });
     }
-    if (mounted)
-      setState(() {
-        lines = loaded;
-        loading = false;
-      });
   }
 
   double _num(Object? value) => (value as num? ?? 0).toDouble();
@@ -155,7 +171,9 @@ class _SalesReturnDetailsScreenState extends State<SalesReturnDetailsScreen> {
     } catch (error) {
       if (mounted) {
         setState(() => submitting = false);
-        _message('تعذر ترحيل المرتجع: $error', error: true);
+        _message(
+            'تعذر ترحيل المرتجع. تحقق من الكمية وحالة الفاتورة ثم حاول مجددًا',
+            error: true);
       }
     }
   }
@@ -204,7 +222,9 @@ class _SalesReturnDetailsScreenState extends State<SalesReturnDetailsScreen> {
             : 'تم فتح المشاركة لواتساب. راجع المستلم قبل الإرسال.');
     } catch (error) {
       if (mounted)
-        _message('تم حفظ المرتجع، لكن تعذر فتح المشاركة: $error', error: true);
+        _message(
+            'تم حفظ المرتجع، لكن تعذر فتح المشاركة. يمكنك إعادة المشاركة من سجل المستندات',
+            error: true);
     }
   }
 
@@ -220,6 +240,20 @@ class _SalesReturnDetailsScreenState extends State<SalesReturnDetailsScreen> {
         appBar: AppBar(title: Text('تفاصيل $number')),
         body: loading
             ? const Center(child: CircularProgressIndicator())
+            : error != null
+                ? Center(
+                    child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(error!, textAlign: TextAlign.center),
+                              const SizedBox(height: 12),
+                              OutlinedButton.icon(
+                                  onPressed: _loadLines,
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text('إعادة المحاولة')),
+                            ])))
             : ListView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
                 children: [

@@ -47,6 +47,12 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
   }
 
   Future<void> _load() async {
+    if (mounted) {
+      setState(() {
+        loading = true;
+        error = null;
+      });
+    }
     try {
       final loadedItems = await inventory.items();
       final loadedAccounts = await accounting.accounts();
@@ -95,18 +101,10 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
   void _setCurrency(String value) {
     setState(() {
       currency = value;
-      if (cashAccountId != null &&
-          !accounts
-              .firstWhere((account) => account.id == cashAccountId)
-              .supportedCurrencies
-              .contains(currency)) {
+      if (!_accountSupportsCurrency(cashAccountId, currency)) {
         cashAccountId = null;
       }
-      if (salesAccountId != null &&
-          !accounts
-              .firstWhere((account) => account.id == salesAccountId)
-              .supportedCurrencies
-              .contains(currency)) {
+      if (!_accountSupportsCurrency(salesAccountId, currency)) {
         salesAccountId = null;
       }
       quantities.removeWhere((id, _) {
@@ -115,6 +113,16 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
         return item != null && item.currency.trim().toUpperCase() != currency;
       });
     });
+  }
+
+  bool _accountSupportsCurrency(int? accountId, String value) {
+    if (accountId == null) return false;
+    for (final account in accounts) {
+      if (account.id == accountId) {
+        return account.supportedCurrencies.contains(value);
+      }
+    }
+    return false;
   }
 
   List<InventoryItem> get cart =>
@@ -191,8 +199,25 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading && items.isEmpty)
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (items.isEmpty && (loading || error != null))
+      return Scaffold(
+        body: Center(
+          child: loading
+              ? const CircularProgressIndicator()
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(error!, textAlign: TextAlign.center),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: _load,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('إعادة المحاولة'),
+                    ),
+                  ],
+                ),
+        ),
+      );
     final cashAccounts = accounts
         .where((a) =>
             (a.kind == AccountKind.cash || a.kind == AccountKind.bank) &&
