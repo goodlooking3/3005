@@ -25,14 +25,20 @@ Future<void> _createAccountingTables(Database db) async {
 
 Future<void> _createEnterpriseTables(Database db) async {
   await db.execute(
-    '''CREATE TABLE IF NOT EXISTS accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL UNIQUE, name TEXT NOT NULL, type TEXT NOT NULL, kind TEXT NOT NULL, parent_id INTEGER, is_group INTEGER NOT NULL DEFAULT 0, currency TEXT NOT NULL DEFAULT 'SAR', opening_balance REAL NOT NULL DEFAULT 0, active INTEGER NOT NULL DEFAULT 1)''',
+    '''CREATE TABLE IF NOT EXISTS accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL UNIQUE, name TEXT NOT NULL, name_ar TEXT, name_en TEXT, type TEXT NOT NULL, kind TEXT NOT NULL, parent_id INTEGER, is_group INTEGER NOT NULL DEFAULT 0, currency TEXT NOT NULL DEFAULT 'SAR', opening_balance REAL NOT NULL DEFAULT 0, active INTEGER NOT NULL DEFAULT 1)''',
   );
+  await _addColumnIfMissing(db, 'accounts', 'name_ar', 'TEXT');
+  await _addColumnIfMissing(db, 'accounts', 'name_en', 'TEXT');
   await db.execute(
     '''CREATE TABLE IF NOT EXISTS voucher_lines (id INTEGER PRIMARY KEY AUTOINCREMENT, voucher_id INTEGER NOT NULL, account_id INTEGER, party_id INTEGER, account_name TEXT NOT NULL, debit REAL NOT NULL DEFAULT 0, credit REAL NOT NULL DEFAULT 0, currency TEXT NOT NULL DEFAULT 'SAR', base_debit REAL, base_credit REAL, party_name TEXT, FOREIGN KEY(voucher_id) REFERENCES vouchers(id))''',
   );
   await db.execute(
-    '''CREATE TABLE IF NOT EXISTS parties (id INTEGER PRIMARY KEY AUTOINCREMENT, account_id INTEGER, name TEXT NOT NULL, type TEXT NOT NULL, phone TEXT, email TEXT, currency TEXT NOT NULL DEFAULT 'SAR', active INTEGER NOT NULL DEFAULT 1)''',
+    '''CREATE TABLE IF NOT EXISTS parties (id INTEGER PRIMARY KEY AUTOINCREMENT, account_id INTEGER, name TEXT NOT NULL, name_ar TEXT, name_en TEXT, type TEXT NOT NULL, phone TEXT, email TEXT, address TEXT, credit_limit REAL NOT NULL DEFAULT 0, currency TEXT NOT NULL DEFAULT 'SAR', active INTEGER NOT NULL DEFAULT 1)''',
   );
+  await _addColumnIfMissing(db, 'parties', 'name_ar', 'TEXT');
+  await _addColumnIfMissing(db, 'parties', 'name_en', 'TEXT');
+  await _addColumnIfMissing(db, 'parties', 'address', 'TEXT');
+  await _addColumnIfMissing(db, 'parties', 'credit_limit', 'REAL NOT NULL DEFAULT 0');
   await db.execute(
     '''CREATE TABLE IF NOT EXISTS company_profile (id INTEGER PRIMARY KEY CHECK(id = 1), name TEXT NOT NULL, legal_name TEXT, tax_number TEXT, phone TEXT, email TEXT, address TEXT, base_currency TEXT NOT NULL DEFAULT 'SAR')''',
   );

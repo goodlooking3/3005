@@ -13,6 +13,8 @@ class AccountExportService {
     sheet.appendRow([
       TextCellValue('code'),
       TextCellValue('name'),
+      TextCellValue('name_ar'),
+      TextCellValue('name_en'),
       TextCellValue('type'),
       TextCellValue('kind'),
       TextCellValue('parent_code'),
@@ -27,6 +29,8 @@ class AccountExportService {
       sheet.appendRow([
         TextCellValue(account.code),
         TextCellValue(account.name),
+        TextCellValue(account.nameAr ?? account.name),
+        TextCellValue(account.nameEn ?? ''),
         TextCellValue(account.type),
         TextCellValue(account.kind.name),
         TextCellValue(account.parentId == null ? '' : byId[account.parentId]?.code ?? ''),

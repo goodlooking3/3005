@@ -23,12 +23,17 @@ class PartyEditorDialog extends StatefulWidget {
 
 class _PartyEditorDialogState extends State<PartyEditorDialog> {
   late final TextEditingController name;
+  late final TextEditingController nameAr;
+  late final TextEditingController nameEn;
   late final TextEditingController phone;
   late final TextEditingController email;
+  late final TextEditingController address;
+  late final TextEditingController creditLimit;
   late String type;
   late String currency;
   Account? account;
   bool saving = false;
+  late bool active;
   String? errorMessage;
 
   @override
@@ -36,8 +41,13 @@ class _PartyEditorDialogState extends State<PartyEditorDialog> {
     super.initState();
     final party = widget.party;
     name = TextEditingController(text: party?.name ?? '');
+    nameAr = TextEditingController(text: party?.nameAr ?? party?.name ?? '');
+    nameEn = TextEditingController(text: party?.nameEn ?? '');
     phone = TextEditingController(text: party?.phone ?? '');
     email = TextEditingController(text: party?.email ?? '');
+    address = TextEditingController(text: party?.address ?? '');
+    creditLimit = TextEditingController(text: (party?.creditLimit ?? 0).toString());
+    active = party?.active ?? true;
     type = party?.type ?? 'customer';
     currency = party?.currency ?? 'SAR';
     for (final candidate in widget.accounts) {
@@ -51,8 +61,12 @@ class _PartyEditorDialogState extends State<PartyEditorDialog> {
   @override
   void dispose() {
     name.dispose();
+    nameAr.dispose();
+    nameEn.dispose();
     phone.dispose();
     email.dispose();
+    address.dispose();
+    creditLimit.dispose();
     super.dispose();
   }
 
@@ -84,6 +98,8 @@ class _PartyEditorDialogState extends State<PartyEditorDialog> {
                 enabled: !saving,
                 decoration: const InputDecoration(labelText: 'الاسم *'),
               ),
+              TextField(controller: nameAr, enabled: !saving, decoration: const InputDecoration(labelText: 'الاسم بالعربي *')),
+              TextField(controller: nameEn, enabled: !saving, decoration: const InputDecoration(labelText: 'الاسم بالإنجليزي')),
               DropdownButtonFormField<String>(
                 value: type,
                 decoration: const InputDecoration(labelText: 'النوع *'),
@@ -134,6 +150,9 @@ class _PartyEditorDialogState extends State<PartyEditorDialog> {
                 keyboardType: TextInputType.emailAddress,
                 decoration: const InputDecoration(labelText: 'البريد الإلكتروني'),
               ),
+              TextField(controller: address, enabled: !saving, decoration: const InputDecoration(labelText: 'العنوان')),
+              TextField(controller: creditLimit, enabled: !saving, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'السقف الائتماني')),
+              SwitchListTile(contentPadding: EdgeInsets.zero, value: active, onChanged: saving ? null : (value) => setState(() => active = value), title: const Text('تفعيل الحساب التحليلي')),
             ]),
           ),
         ),
@@ -151,7 +170,8 @@ class _PartyEditorDialogState extends State<PartyEditorDialog> {
 
   Future<void> _save() async {
     final trimmedEmail = email.text.trim();
-    if (name.text.trim().length < 2) {
+    final limit = double.tryParse(creditLimit.text.replaceAll(',', '').trim());
+    if (name.text.trim().length < 2 || nameAr.text.trim().length < 2 || limit == null || limit < 0 || !limit.isFinite) {
       _message('أدخل اسم الطرف بشكل صحيح');
       return;
     }
@@ -173,11 +193,15 @@ class _PartyEditorDialogState extends State<PartyEditorDialog> {
         id: widget.party?.id,
         accountId: account!.id,
         name: name.text.trim(),
+        nameAr: nameAr.text.trim(),
+        nameEn: nameEn.text.trim(),
         type: type,
         phone: phone.text.trim(),
         email: trimmedEmail,
+        address: address.text.trim(),
+        creditLimit: limit,
         currency: currency,
-        active: widget.party?.active ?? true,
+        active: active,
       ));
       if (mounted) Navigator.pop(context, true);
     } catch (_) {

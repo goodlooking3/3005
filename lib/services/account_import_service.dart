@@ -44,6 +44,8 @@ class AccountImportService {
         await repository.upsertAccount(Account(
           code: code,
           name: name,
+          nameAr: _value(row, _first(headers, ['name_ar', 'الاسم بالعربي'])).ifEmpty(name),
+          nameEn: _value(row, _first(headers, ['name_en', 'الاسم بالإنجليزي'])),
           type: _value(row, _first(headers, ['type', 'النوع'])),
           kind: _kind(_value(row, _first(headers, ['kind', 'التصنيف']))),
           parentId: parent?.id,

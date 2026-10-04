@@ -557,6 +557,8 @@ class AccountingRepository {
           final values = {
             'code': code,
             'name': account.name.trim(),
+            'name_ar': account.nameAr?.trim().isEmpty == true ? null : account.nameAr?.trim(),
+            'name_en': account.nameEn?.trim().isEmpty == true ? null : account.nameEn?.trim(),
             'type': account.type,
             'kind': account.kind.name,
             'parent_id': account.parentId,
@@ -628,6 +630,8 @@ class AccountingRepository {
             id: r['id'] as int,
             code: r['code']! as String,
             name: r['name']! as String,
+            nameAr: r['name_ar'] as String?,
+            nameEn: r['name_en'] as String?,
             type: r['type']! as String,
             kind: AccountKind.values.firstWhere(
               (k) => k.name == r['kind'],
@@ -691,6 +695,8 @@ class AccountingRepository {
         id: row['id'] as int,
         code: row['code']! as String,
         name: row['name']! as String,
+        nameAr: row['name_ar'] as String?,
+        nameEn: row['name_en'] as String?,
         type: row['type']! as String,
         kind: AccountKind.values.firstWhere((kind) => kind.name == row['kind'],
             orElse: () => AccountKind.asset),
@@ -759,6 +765,8 @@ class AccountingRepository {
           final values = {
             'account_id': party.accountId,
             'name': name,
+            'name_ar': party.nameAr?.trim().isEmpty == true ? null : party.nameAr?.trim(),
+            'name_en': party.nameEn?.trim().isEmpty == true ? null : party.nameEn?.trim(),
             'type': type,
             'phone': party.phone?.trim().isEmpty == true
                 ? null
@@ -766,6 +774,8 @@ class AccountingRepository {
             'email': party.email?.trim().isEmpty == true
                 ? null
                 : party.email?.trim(),
+            'address': party.address?.trim().isEmpty == true ? null : party.address?.trim(),
+            'credit_limit': party.creditLimit,
             'currency': currency,
             'active': party.active ? 1 : 0,
           };
@@ -793,9 +803,13 @@ class AccountingRepository {
             id: r['id'] as int,
             accountId: r['account_id'] as int?,
             name: r['name']! as String,
+            nameAr: r['name_ar'] as String?,
+            nameEn: r['name_en'] as String?,
             type: r['type']! as String,
             phone: r['phone'] as String?,
             email: r['email'] as String?,
+            address: r['address'] as String?,
+            creditLimit: (r['credit_limit'] as num? ?? 0).toDouble(),
             currency: r['currency']! as String,
             active: (r['active'] as int? ?? 1) == 1,
           ),

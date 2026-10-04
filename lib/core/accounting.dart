@@ -16,6 +16,8 @@ class Account {
   final int? id;
   final String code;
   final String name;
+  final String? nameAr;
+  final String? nameEn;
   final String type;
   final AccountKind kind;
   final int? parentId;
@@ -28,6 +30,8 @@ class Account {
     this.id,
     required this.code,
     required this.name,
+    this.nameAr,
+    this.nameEn,
     required this.type,
     this.kind = AccountKind.asset,
     this.parentId,
@@ -44,6 +48,8 @@ class Account {
         id: id,
         code: code,
         name: name,
+        nameAr: nameAr,
+        nameEn: nameEn,
         type: type,
         kind: kind,
         parentId: parentId,
@@ -119,18 +125,26 @@ class Party {
   final int? id;
   final int? accountId;
   final String name;
+  final String? nameAr;
+  final String? nameEn;
   final String type;
   final String? phone;
   final String? email;
+  final String? address;
+  final double creditLimit;
   final String currency;
   final bool active;
   const Party({
     this.id,
     this.accountId,
     required this.name,
+    this.nameAr,
+    this.nameEn,
     required this.type,
     this.phone,
     this.email,
+    this.address,
+    this.creditLimit = 0,
     this.currency = 'SAR',
     this.active = true,
   });

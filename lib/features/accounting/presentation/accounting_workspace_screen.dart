@@ -8,6 +8,7 @@ import 'account_directory_transfer_screen.dart';
 import 'account_tree.dart';
 import 'party_editor_dialog.dart';
 import 'voucher_editor_dialog.dart';
+import 'account_management_screens.dart';
 
 class AccountingWorkspaceScreen extends StatefulWidget {
   final AccountingRepository repository;
@@ -150,6 +151,14 @@ class _AccountingWorkspaceScreenState extends State<AccountingWorkspaceScreen>
               onPressed: widget.onShowAudit,
               icon: const Icon(Icons.fact_check_outlined),
               label: const Text('سجل التدقيق'));
+          final accountManagement = OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => AccountManagementScreen(repository: widget.repository))),
+              icon: const Icon(Icons.account_tree_outlined),
+              label: const Text('إدارة الحسابات'));
+          final analyticalManagement = OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => AnalyticalAccountsScreen(repository: widget.repository))),
+              icon: const Icon(Icons.people_alt_outlined),
+              label: const Text('الحسابات التحليلية'));
           if (constraints.maxWidth < 1024) {
             return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -159,7 +168,7 @@ class _AccountingWorkspaceScreenState extends State<AccountingWorkspaceScreen>
                   Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: [receipt, payment, reports, audit]),
+                      children: [receipt, payment, accountManagement, analyticalManagement, reports, audit]),
                 ]);
           }
           return Row(children: [
@@ -170,6 +179,10 @@ class _AccountingWorkspaceScreenState extends State<AccountingWorkspaceScreen>
             payment,
             const SizedBox(width: 8),
             reports,
+            const SizedBox(width: 8),
+            accountManagement,
+            const SizedBox(width: 8),
+            analyticalManagement,
             const SizedBox(width: 8),
             audit,
           ]);

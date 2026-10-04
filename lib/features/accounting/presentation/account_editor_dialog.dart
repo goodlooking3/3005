@@ -20,6 +20,8 @@ class AccountEditorDialog extends StatefulWidget {
 class _AccountEditorDialogState extends State<AccountEditorDialog> {
   late final TextEditingController code;
   late final TextEditingController name;
+  late final TextEditingController nameAr;
+  late final TextEditingController nameEn;
   late final TextEditingController opening;
   late AccountKind kind;
   late String currency;
@@ -35,6 +37,8 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
     final account = widget.account;
     code = TextEditingController(text: account?.code ?? '');
     name = TextEditingController(text: account?.name ?? '');
+    nameAr = TextEditingController(text: account?.nameAr ?? account?.name ?? '');
+    nameEn = TextEditingController(text: account?.nameEn ?? '');
     opening = TextEditingController(text: (account?.balance ?? 0).toString());
     kind = account?.kind ?? AccountKind.asset;
     currency = account?.currency ?? 'SAR';
@@ -53,6 +57,8 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
   void dispose() {
     code.dispose();
     name.dispose();
+    nameAr.dispose();
+    nameEn.dispose();
     opening.dispose();
     super.dispose();
   }
@@ -89,6 +95,14 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                   controller: name,
                   enabled: !saving,
                   decoration: const InputDecoration(labelText: 'اسم الحساب')),
+              TextField(
+                  controller: nameAr,
+                  enabled: !saving,
+                  decoration: const InputDecoration(labelText: 'الاسم بالعربي *')),
+              TextField(
+                  controller: nameEn,
+                  enabled: !saving,
+                  decoration: const InputDecoration(labelText: 'الاسم بالإنجليزي')),
               DropdownButtonFormField<AccountKind>(
                   value: kind,
                   decoration: const InputDecoration(labelText: 'نوع الحساب'),
@@ -187,8 +201,10 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
         double.tryParse(opening.text.replaceAll(',', '').trim()) ?? -1;
     final trimmedCode = code.text.trim();
     final trimmedName = name.text.trim();
+    final trimmedNameAr = nameAr.text.trim();
     if (!RegExp(r'^\d{2,20}$').hasMatch(trimmedCode) ||
         trimmedName.length < 2 ||
+        trimmedNameAr.length < 2 ||
         amount < 0 ||
         !amount.isFinite) {
       _message('أدخل رقم حساب رقميًا، واسمًا، ورصيدًا صحيحًا');
@@ -208,6 +224,8 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
           id: widget.account?.id,
           code: trimmedCode,
           name: trimmedName,
+          nameAr: trimmedNameAr,
+          nameEn: nameEn.text.trim(),
           type: accountKindLabel(kind),
           kind: kind,
           parentId: parent?.id,

@@ -95,5 +95,13 @@ class LocalDatabaseSchema {
       await _addColumnIfMissing(db, 'voucher_lines', 'party_id', 'INTEGER');
       await _addColumnIfMissing(db, 'journal_lines', 'party_id', 'INTEGER');
     }
+    if (oldVersion < 27) {
+      await _addColumnIfMissing(db, 'accounts', 'name_ar', 'TEXT');
+      await _addColumnIfMissing(db, 'accounts', 'name_en', 'TEXT');
+      await _addColumnIfMissing(db, 'parties', 'name_ar', 'TEXT');
+      await _addColumnIfMissing(db, 'parties', 'name_en', 'TEXT');
+      await _addColumnIfMissing(db, 'parties', 'address', 'TEXT');
+      await _addColumnIfMissing(db, 'parties', 'credit_limit', 'REAL NOT NULL DEFAULT 0');
+    }
   }
 }
