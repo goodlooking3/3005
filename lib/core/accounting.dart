@@ -57,6 +57,7 @@ class Account {
 
 class VoucherLine {
   final int? accountId;
+  final int? partyId;
   final String accountName;
   final double debit;
   final double credit;
@@ -64,6 +65,7 @@ class VoucherLine {
   final String? partyName;
   const VoucherLine({
     this.accountId,
+    this.partyId,
     required this.accountName,
     this.debit = 0,
     this.credit = 0,
@@ -115,18 +117,22 @@ class Voucher {
 
 class Party {
   final int? id;
+  final int? accountId;
   final String name;
   final String type;
   final String? phone;
   final String? email;
   final String currency;
+  final bool active;
   const Party({
     this.id,
+    this.accountId,
     required this.name,
     required this.type,
     this.phone,
     this.email,
     this.currency = 'SAR',
+    this.active = true,
   });
 }
 

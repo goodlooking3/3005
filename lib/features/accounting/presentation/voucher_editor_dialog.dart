@@ -172,6 +172,12 @@ class _VoucherEditorDialogState extends State<VoucherEditorDialog> {
       _message('يجب اختيار حسابين مختلفين');
       return;
     }
+    if (party != null &&
+        party!.accountId != debit!.id &&
+        party!.accountId != credit!.id) {
+      _message('اختر الحساب التحليلي المرتبط بالطرف في أحد طرفي السند');
+      return;
+    }
     setState(() => saving = true);
     try {
       await widget.repository.insertVoucher(Voucher(
@@ -188,12 +194,14 @@ class _VoucherEditorDialogState extends State<VoucherEditorDialog> {
         lines: [
           VoucherLine(
               accountId: debit!.id,
+              partyId: party?.accountId == debit!.id ? party?.id : null,
               accountName: debit!.name,
               debit: debitValue,
               currency: debitCurrency,
               partyName: party?.name),
           VoucherLine(
               accountId: credit!.id,
+              partyId: party?.accountId == credit!.id ? party?.id : null,
               accountName: credit!.name,
               credit: creditValue,
               currency: creditCurrency,

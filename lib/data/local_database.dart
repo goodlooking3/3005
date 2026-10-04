@@ -44,7 +44,7 @@ class LocalDatabase {
     _db = await factory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 25,
+        version: 26,
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON');
           if (!kIsWeb) {

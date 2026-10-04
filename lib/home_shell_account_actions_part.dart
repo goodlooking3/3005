@@ -15,7 +15,9 @@ extension _HomeShellAccountActions on _HomeShellState {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('تعذر فتح محرر الحساب: $error')));
+        ).showSnackBar(const SnackBar(
+          content: Text('تعذر فتح محرر الحساب. حاول مجددًا'),
+        ));
       }
     }
   }
@@ -43,9 +45,14 @@ extension _HomeShellAccountActions on _HomeShellState {
   }
 
   Future<void> _showPartyDialog() async {
+    final accounts = await accounting.accounts();
+    if (!mounted) return;
     final saved = await showDialog<bool>(
       context: context,
-      builder: (_) => PartyEditorDialog(repository: accounting),
+      builder: (_) => PartyEditorDialog(
+        repository: accounting,
+        accounts: accounts,
+      ),
     );
     if (saved == true) await _hydrateAccounting();
   }

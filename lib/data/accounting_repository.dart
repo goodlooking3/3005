@@ -232,6 +232,7 @@ class AccountingRepository {
     }
     await _validatePostingAccounts(txn, voucher);
     await _validatePostingCurrencies(txn, voucher);
+    await _validatePartyLinks(txn, voucher);
     final valuation = await currencyPolicy.value(
       db: txn,
       amount: voucher.amount,
@@ -280,6 +281,7 @@ class AccountingRepository {
       await txn.insert('voucher_lines', {
         'voucher_id': id,
         'account_id': line.accountId,
+        'party_id': line.partyId,
         'account_name': line.accountName,
         'debit': line.debit,
         'credit': line.credit,
@@ -319,6 +321,7 @@ class AccountingRepository {
       await txn.insert('journal_lines', {
         'journal_entry_id': journalId,
         'account_id': line.accountId,
+        'party_id': line.partyId,
         'account_name': line.accountName,
         'debit': line.debit,
         'credit': line.credit,
@@ -443,6 +446,26 @@ class AccountingRepository {
       );
       if (account.isEmpty || account.single['currency'] != currency) {
         throw StateError('العملة $currency غير مسموحة للحساب رقم $accountId');
+      );
+    }
+  }
+
+  Future<void> _validatePartyLinks(Transaction txn, Voucher voucher) async {
+    for (final line in voucher.lines) {
+      final partyId = line.partyId;
+      if (partyId == null) continue;
+      final rows = await txn.query(
+        'parties',
+        columns: ['account_id', 'active'],
+        where: 'id = ?',
+        whereArgs: [partyId],
+        limit: 1,
+      );
+      if (rows.isEmpty || (rows.single['active'] as int? ?? 0) != 1) {
+        throw StateError('الطرف المرتبط غير موجود أو غير نشط');
+      }
+      if (rows.single['account_id'] as int? != line.accountId) {
+        throw StateError('الحساب التحليلي للطرف لا يطابق حساب القيد');
       }
     }
   }
@@ -474,6 +497,7 @@ class AccountingRepository {
             creditAccountId: row['credit_account_id'] as int?,
             lines: lineRows.map((line) => VoucherLine(
               accountId: line['account_id'] as int?,
+              partyId: line['party_id'] as int?,
               accountName: line['account_name']! as String,
               debit: (line['debit']! as num).toDouble(),
               credit: (line['credit']! as num).toDouble(),
@@ -685,14 +709,76 @@ class AccountingRepository {
         await db.update('accounts', {'active': active ? 1 : 0}, where: 'id = ?', whereArgs: [id]);
       });
 
-  Future<int> insertParty(Party party) => LocalDatabase.instance.write(
-        (db) => db.insert('parties', {
-          'name': party.name.trim(),
-          'type': party.type,
-          'phone': party.phone,
-          'email': party.email,
-          'currency': party.currency,
-        }),
+  Future<int> insertParty(Party party) => upsertParty(party);
+
+  Future<int> upsertParty(Party party) => LocalDatabase.instance.write(
+        (db) async {
+          final name = party.name.trim();
+          final type = party.type.trim().toLowerCase();
+          final currency = party.currency.trim().toUpperCase();
+          if (name.length < 2 || !{'customer', 'supplier'}.contains(type)) {
+            throw ArgumentError('اسم الطرف ونوعه مطلوبان');
+          }
+          final currencyRows = await db.query(
+            'currencies',
+            columns: ['code'],
+            where: 'code = ? AND active = 1',
+            whereArgs: [currency],
+            limit: 1,
+          );
+          if (currencyRows.isEmpty) {
+            throw StateError('العملة المختارة غير نشطة أو غير معروفة');
+          }
+          if (party.accountId == null) {
+            throw StateError('يجب ربط الطرف بحساب تحليلي قبل الحفظ');
+          }
+          final accountRows = await db.query(
+            'accounts',
+            columns: ['kind', 'active', 'is_group'],
+            where: 'id = ?',
+            whereArgs: [party.accountId],
+            limit: 1,
+          );
+          final account = accountRows.isEmpty ? null : accountRows.single;
+          if (account == null ||
+              (account['active'] as int? ?? 0) != 1 ||
+              (account['is_group'] as int? ?? 1) == 1 ||
+              account['kind'] != type) {
+            throw StateError('اختر حسابًا تحليليًا نشطًا من نفس نوع الطرف');
+          }
+          final duplicate = await db.query(
+            'parties',
+            columns: ['id'],
+            where: 'name = ? AND type = ? AND id != ?',
+            whereArgs: [name, type, party.id ?? -1],
+            limit: 1,
+          );
+          if (duplicate.isNotEmpty) {
+            throw StateError('يوجد طرف بالاسم والنوع نفسيهما');
+          }
+          final values = {
+            'account_id': party.accountId,
+            'name': name,
+            'type': type,
+            'phone': party.phone?.trim().isEmpty == true
+                ? null
+                : party.phone?.trim(),
+            'email': party.email?.trim().isEmpty == true
+                ? null
+                : party.email?.trim(),
+            'currency': currency,
+            'active': party.active ? 1 : 0,
+          };
+          if (party.id == null) return db.insert('parties', values);
+          final updated = await db.update(
+            'parties',
+            values,
+            where: 'id = ?',
+            whereArgs: [party.id],
+          );
+          if (updated == 0) throw StateError('الطرف غير موجود');
+          return party.id!;
+        },
       );
   Future<List<Party>> parties({String? type}) async {
     final rows = await (await _db).query(
@@ -705,11 +791,13 @@ class AccountingRepository {
         .map(
           (r) => Party(
             id: r['id'] as int,
+            accountId: r['account_id'] as int?,
             name: r['name']! as String,
             type: r['type']! as String,
             phone: r['phone'] as String?,
             email: r['email'] as String?,
             currency: r['currency']! as String,
+            active: (r['active'] as int? ?? 1) == 1,
           ),
         )
         .toList();

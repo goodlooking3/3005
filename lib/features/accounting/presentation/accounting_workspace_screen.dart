@@ -72,13 +72,15 @@ class _AccountingWorkspaceScreenState extends State<AccountingWorkspaceScreen>
         parties = result[1] as List<Party>;
         summary = result[2] as FinancialSummary;
         loading = false;
-        error = chart.error?.toString();
+          error = chart.error == null
+              ? null
+              : 'تعذر تحميل دليل الحسابات. اضغط تحديث وحاول مجددًا';
       });
     } catch (exception) {
       if (mounted)
         setState(() {
           loading = false;
-          error = 'تعذر تحميل البيانات المحاسبية: $exception';
+          error = 'تعذر تحميل البيانات المحاسبية. اضغط تحديث وحاول مجددًا';
         });
     }
   }
@@ -100,10 +102,13 @@ class _AccountingWorkspaceScreenState extends State<AccountingWorkspaceScreen>
     await _load();
   }
 
-  Future<void> _partyEditor() async {
+  Future<void> _partyEditor([Party? party]) async {
     final saved = await showDialog<bool>(
         context: context,
-        builder: (_) => PartyEditorDialog(repository: widget.repository));
+        builder: (_) => PartyEditorDialog(
+            repository: widget.repository,
+            accounts: chart.allAccounts,
+            party: party));
     if (saved == true) await _load();
   }
 
@@ -359,8 +364,8 @@ class _AccountingWorkspaceScreenState extends State<AccountingWorkspaceScreen>
                     await chart.setActive(account, !account.active);
                   } catch (error) {
                     if (mounted)
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: Text('تعذر تحديث حالة الحساب: $error')));
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text('تعذر تحديث حالة الحساب. حاول مجددًا')));
                   }
                 }
               },
@@ -424,10 +429,26 @@ class _AccountingWorkspaceScreenState extends State<AccountingWorkspaceScreen>
             title: Text(party.name,
                 style: const TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Text(
-                '${party.type == 'supplier' ? 'مورد' : 'عميل'} • ${party.phone ?? 'بدون هاتف'}'),
-            trailing: Text(party.currency))),
+                '${party.type == 'supplier' ? 'مورد' : 'عميل'} • ${party.phone ?? 'بدون هاتف'}\nحساب تحليلي: ${_partyAccountLabel(party)}'),
+            isThreeLine: true,
+            trailing: PopupMenuButton<String>(
+                onSelected: (value) {
+                  if (value == 'edit') _partyEditor(party);
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'edit', child: Text('تعديل')),
+                ]))),
         if (parties.isEmpty) const _Empty(text: 'لا توجد أطراف مسجلة بعد.')
       ]);
+
+  String _partyAccountLabel(Party party) {
+    for (final account in chart.allAccounts) {
+      if (account.id == party.accountId) {
+        return '${account.code} — ${account.name} • ${party.currency}';
+      }
+    }
+    return 'غير مرتبط — يحتاج مراجعة';
+  }
 }
 
 class _Empty extends StatelessWidget {

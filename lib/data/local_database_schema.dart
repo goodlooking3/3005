@@ -90,5 +90,10 @@ class LocalDatabaseSchema {
       await _addColumnIfMissing(db, 'purchase_orders', 'nonrecoverable_tax', 'REAL NOT NULL DEFAULT 0');
       await _addColumnIfMissing(db, 'purchase_order_lines', 'unit_cost', 'REAL NOT NULL DEFAULT 0');
     }
+    if (oldVersion < 26) {
+      await _addColumnIfMissing(db, 'parties', 'account_id', 'INTEGER');
+      await _addColumnIfMissing(db, 'voucher_lines', 'party_id', 'INTEGER');
+      await _addColumnIfMissing(db, 'journal_lines', 'party_id', 'INTEGER');
+    }
   }
 }
