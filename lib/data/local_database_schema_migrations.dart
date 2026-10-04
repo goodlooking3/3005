@@ -29,7 +29,7 @@ Future<void> _createJournalTable(Database db) async {
 
 Future<void> _createJournalLinesTable(Database db) async {
   await db.execute(
-    '''CREATE TABLE IF NOT EXISTS journal_lines (id INTEGER PRIMARY KEY AUTOINCREMENT, journal_entry_id INTEGER NOT NULL, account_id INTEGER, account_name TEXT NOT NULL, debit REAL NOT NULL DEFAULT 0 CHECK(debit >= 0), credit REAL NOT NULL DEFAULT 0 CHECK(credit >= 0), currency TEXT NOT NULL DEFAULT 'SAR', base_debit REAL, base_credit REAL, party_name TEXT, FOREIGN KEY(journal_entry_id) REFERENCES journal_entries(id))''',
+    '''CREATE TABLE IF NOT EXISTS journal_lines (id INTEGER PRIMARY KEY AUTOINCREMENT, journal_entry_id INTEGER NOT NULL, account_id INTEGER, party_id INTEGER, account_name TEXT NOT NULL, debit REAL NOT NULL DEFAULT 0 CHECK(debit >= 0), credit REAL NOT NULL DEFAULT 0 CHECK(credit >= 0), currency TEXT NOT NULL DEFAULT 'SAR', base_debit REAL, base_credit REAL, party_name TEXT, FOREIGN KEY(journal_entry_id) REFERENCES journal_entries(id))''',
   );
 }
 
