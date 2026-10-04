@@ -204,7 +204,6 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
     final trimmedNameAr = nameAr.text.trim();
     if (!RegExp(r'^\d{2,20}$').hasMatch(trimmedCode) ||
         trimmedName.length < 2 ||
-        trimmedNameAr.length < 2 ||
         amount < 0 ||
         !amount.isFinite) {
       _message('أدخل رقم حساب رقميًا، واسمًا، ورصيدًا صحيحًا');
@@ -224,7 +223,7 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
           id: widget.account?.id,
           code: trimmedCode,
           name: trimmedName,
-          nameAr: trimmedNameAr,
+          nameAr: trimmedNameAr.isEmpty ? trimmedName : trimmedNameAr,
           nameEn: nameEn.text.trim(),
           type: accountKindLabel(kind),
           kind: kind,

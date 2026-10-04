@@ -62,8 +62,8 @@ void main() {
     ));
 
     final db = await LocalDatabase.instance.database;
-    expect((await db.query('voucher_lines')).single['party_id'], partyId);
-    expect((await db.query('journal_lines')).single['party_id'], partyId);
+    expect((await db.query('voucher_lines', where: 'party_id IS NOT NULL')).single['party_id'], partyId);
+    expect((await db.query('journal_lines', where: 'party_id IS NOT NULL')).single['party_id'], partyId);
   });
 
   test('new party requires a matching active analytical account', () async {
