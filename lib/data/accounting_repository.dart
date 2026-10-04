@@ -446,7 +446,7 @@ class AccountingRepository {
       );
       if (account.isEmpty || account.single['currency'] != currency) {
         throw StateError('العملة $currency غير مسموحة للحساب رقم $accountId');
-      );
+      }
     }
   }
 
