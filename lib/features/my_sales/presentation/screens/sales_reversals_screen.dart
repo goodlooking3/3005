@@ -20,6 +20,7 @@ class _SalesReversalsScreenState extends State<SalesReversalsScreen> {
   final engine = SalesEngine();
   List<Map<String, Object?>> invoices = [];
   bool loading = true;
+  String? error;
 
   @override
   void initState() {
@@ -28,14 +29,14 @@ class _SalesReversalsScreenState extends State<SalesReversalsScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => loading = true);
-    final rows = await (await LocalDatabase.instance.database)
-        .query('sales_invoices', orderBy: 'issued_at DESC');
-    if (mounted)
-      setState(() {
-        invoices = rows;
-        loading = false;
-      });
+    if (mounted) setState(() { loading = true; error = null; });
+    try {
+      final rows = await (await LocalDatabase.instance.database)
+          .query('sales_invoices', orderBy: 'issued_at DESC');
+      if (mounted) setState(() { invoices = rows; loading = false; });
+    } catch (_) {
+      if (mounted) setState(() { loading = false; error = 'تعذر تحميل فواتير المرتجع والإلغاء'; });
+    }
   }
 
   Future<void> _openInvoice(Map<String, Object?> invoice) async {
@@ -78,14 +79,14 @@ class _SalesReversalsScreenState extends State<SalesReversalsScreen> {
       );
       await _load();
     } catch (error) {
-      if (mounted) _error(error);
+      if (mounted) _error();
     }
   }
 
-  void _error(Object error) => ScaffoldMessenger.of(context).showSnackBar(
+  void _error() => ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             backgroundColor: Theme.of(context).colorScheme.error,
-            content: Text('تعذر تنفيذ العملية: $error')),
+            content: const Text('تعذر تنفيذ العملية. تحقق من حالة الفاتورة وحاول مجددًا')),
       );
 
   @override
@@ -105,6 +106,11 @@ class _SalesReversalsScreenState extends State<SalesReversalsScreen> {
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                   children: [
                     _header(),
+                    if (error != null) Card(color: Colors.red.shade50, child: ListTile(
+                      leading: const Icon(Icons.error_outline, color: Colors.red),
+                      title: Text(error!),
+                      trailing: IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+                    )),
                     const SizedBox(height: 18),
                     if (invoices.isEmpty)
                       _emptyState()

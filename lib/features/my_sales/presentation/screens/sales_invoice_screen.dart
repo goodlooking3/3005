@@ -65,7 +65,7 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
     } catch (value) {
       if (mounted)
         setState(() {
-          error = '$value';
+          error = 'تعذر تحميل بيانات فاتورة البيع. اضغط تحديث وحاول مجددًا';
           loading = false;
         });
     }
@@ -82,12 +82,39 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
 
   List<InventoryItem> get filteredItems {
     final term = search.text.trim().toLowerCase();
-    if (term.isEmpty) return items;
-    return items
-        .where((item) =>
-            item.name.toLowerCase().contains(term) ||
-            item.sku.toLowerCase().contains(term))
-        .toList();
+    return items.where((item) {
+      final sameCurrency = item.currency.trim().toUpperCase() == currency;
+      final matchesSearch = term.isEmpty ||
+          item.name.toLowerCase().contains(term) ||
+          item.sku.toLowerCase().contains(term);
+      return sameCurrency && matchesSearch;
+    }).toList();
+  }
+  double get cartTotal => cart.fold<double>(
+      0, (total, item) => total + _quantity(item) * item.salePrice);
+  void _setCurrency(String value) {
+    setState(() {
+      currency = value;
+      if (cashAccountId != null &&
+          !accounts
+              .firstWhere((account) => account.id == cashAccountId)
+              .supportedCurrencies
+              .contains(currency)) {
+        cashAccountId = null;
+      }
+      if (salesAccountId != null &&
+          !accounts
+              .firstWhere((account) => account.id == salesAccountId)
+              .supportedCurrencies
+              .contains(currency)) {
+        salesAccountId = null;
+      }
+      quantities.removeWhere((id, _) {
+        final matches = items.where((candidate) => candidate.id == id);
+        final item = matches.isEmpty ? null : matches.first;
+        return item != null && item.currency.trim().toUpperCase() != currency;
+      });
+    });
   }
 
   List<InventoryItem> get cart =>
@@ -153,10 +180,10 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
         salesAccountId: salesAccountId!,
       );
       if (mounted) Navigator.pop(context, true);
-    } catch (value) {
+    } catch (_) {
       if (mounted)
         setState(() {
-          error = '$value';
+          error = 'تعذر ترحيل الفاتورة. تحقق من الحساب والعملة والكمية ثم حاول مجددًا';
           loading = false;
         });
     }
@@ -167,10 +194,16 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
     if (loading && items.isEmpty)
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     final cashAccounts = accounts
-        .where((a) => a.kind == AccountKind.cash || a.kind == AccountKind.bank)
+        .where((a) =>
+            (a.kind == AccountKind.cash || a.kind == AccountKind.bank) &&
+            a.supportedCurrencies.contains(currency))
         .toList();
     final revenueAccounts =
-        accounts.where((a) => a.kind == AccountKind.revenue).toList();
+        accounts
+            .where((a) =>
+                a.kind == AccountKind.revenue &&
+                a.supportedCurrencies.contains(currency))
+            .toList();
     return Scaffold(
       appBar: AppBar(title: const Text('فاتورة بيع جديدة')),
       body: ListView(padding: const EdgeInsets.all(16), children: [
@@ -190,9 +223,10 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
               onTap: () => setState(() => customer.text = party.name),
             )),
         const SizedBox(height: 8),
-        Row(children: [
-          Expanded(
-              child: DropdownButtonFormField<String>(
+        LayoutBuilder(builder: (context, constraints) {
+          final compact = constraints.maxWidth < 520;
+          final fields = [
+            DropdownButtonFormField<String>(
                   value: currency,
                   decoration: const InputDecoration(labelText: 'العملة'),
                   items: (currencyOptions.isEmpty
@@ -207,19 +241,19 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
                           value: item.code,
                           child: Text('${item.code} — ${item.name}')))
                       .toList(),
-                  onChanged: (value) =>
-                      setState(() => currency = value ?? 'SAR'))),
-          const SizedBox(width: 8),
-          Expanded(
-              child: DropdownButtonFormField<int>(
-                  value: cashAccountId,
-                  decoration: const InputDecoration(labelText: 'حساب التحصيل'),
-                  items: cashAccounts
-                      .map((a) =>
-                          DropdownMenuItem(value: a.id, child: Text(a.name)))
-                      .toList(),
-                  onChanged: (value) => setState(() => cashAccountId = value))),
-        ]),
+                  onChanged: (value) => _setCurrency(value ?? 'SAR')),
+            DropdownButtonFormField<int>(
+                value: cashAccountId,
+                decoration: const InputDecoration(labelText: 'حساب التحصيل'),
+                items: cashAccounts
+                    .map((a) => DropdownMenuItem(value: a.id, child: Text(a.name)))
+                    .toList(),
+                onChanged: (value) => setState(() => cashAccountId = value)),
+          ];
+          return compact
+              ? Column(children: [fields[0], const SizedBox(height: 8), fields[1]])
+              : Row(children: [Expanded(child: fields[0]), const SizedBox(width: 8), Expanded(child: fields[1])]);
+        }),
         const SizedBox(height: 8),
         DropdownButtonFormField<int>(
             value: salesAccountId,
@@ -252,10 +286,17 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
                 onPressed: () => _remove(item),
                 icon: const Icon(Icons.remove_circle_outline)),
             trailing: Text(_quantity(item).toStringAsFixed(0)))),
+        const SizedBox(height: 12),
+        Card(
+          child: ListTile(
+            title: const Text('إجمالي الفاتورة'),
+            trailing: Text('${cartTotal.toStringAsFixed(2)} $currency', style: const TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ),
         FilledButton.icon(
             onPressed: loading ? null : _post,
-            icon: const Icon(Icons.receipt_long),
-            label: const Text('ترحيل الفاتورة')),
+            icon: loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.receipt_long),
+            label: Text(loading ? 'جارٍ الترحيل...' : 'ترحيل الفاتورة')),
       ]),
     );
   }
