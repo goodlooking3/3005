@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/accounting.dart';
+import '../../../core/user_facing_errors.dart';
 import '../../../data/accounting_repository.dart';
 import 'account_picker_fields.dart';
 
@@ -212,7 +213,8 @@ class _VoucherEditorDialogState extends State<VoucherEditorDialog> {
     } catch (error) {
       if (mounted) {
         setState(() => saving = false);
-        _message('تعذر ترحيل السند: $error');
+        _message(userFacingError(error,
+            fallback: 'تعذر ترحيل السند. راجع الحساب والعملة والمبلغ ثم حاول مجددًا'));
       }
     }
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/user_facing_errors.dart';
 import '../../data/datasources/inventory_local_db.dart';
 import '../../domain/inventory_item.dart';
 
@@ -30,7 +31,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
       await InventoryLocalDb().save(InventoryItem(name: name.text.trim(), sku: sku.text.trim(), costPrice: double.parse(cost.text), salePrice: double.parse(sale.text), quantity: double.parse(quantity.text), lowStockThreshold: double.parse(threshold.text)));
       if (mounted) Navigator.pop(context, true);
     } catch (value) {
-      if (mounted) setState(() { saving = false; error = 'تعذر حفظ المنتج: $value'; });
+      if (mounted) setState(() {
+        saving = false;
+        error = userFacingError(value, fallback: 'تعذر حفظ المنتج. راجع البيانات وحاول مجددًا');
+      });
     }
   }
 

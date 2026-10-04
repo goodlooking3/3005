@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/user_facing_errors.dart';
 import '../../../data/accounting_repository.dart';
 import '../../../services/account_export_service.dart';
 import '../../../services/account_import_service.dart';
@@ -36,7 +37,8 @@ class _AccountDirectoryTransferScreenState extends State<AccountDirectoryTransfe
       final accounts = await catalog.ensureDefaults();
       _show('تم تجهيز ${accounts.length} حسابًا، وتشمل الحسابات الرئيسية الأربعة');
     } catch (error) {
-      _show('تعذر تجهيز الحسابات الرئيسية: $error');
+      _show(userFacingError(error,
+          fallback: 'تعذر تجهيز الحسابات الرئيسية. حاول مجددًا'));
     }
   }
 
@@ -63,7 +65,8 @@ class _AccountDirectoryTransferScreenState extends State<AccountDirectoryTransfe
         );
       }
     } catch (error) {
-      _show('تعذر استيراد الملف: $error');
+      _show(userFacingError(error,
+          fallback: 'تعذر استيراد الملف. راجع الأعمدة وحاول مجددًا'));
     }
   }
 
@@ -78,7 +81,8 @@ class _AccountDirectoryTransferScreenState extends State<AccountDirectoryTransfe
       );
       _show(path == null ? 'تم إلغاء التصدير' : 'تم تصدير الدليل إلى الملف المحدد');
     } catch (error) {
-      _show('تعذر تصدير الدليل: $error');
+      _show(userFacingError(error,
+          fallback: 'تعذر تصدير الدليل. حاول مجددًا'));
     }
   }
 

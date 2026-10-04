@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/user_facing_errors.dart';
 import '../../data/datasources/inventory_local_db.dart';
 import '../../data/sales_engine.dart';
 import '../../domain/inventory_item.dart';
@@ -34,7 +35,10 @@ class _InventoryMovementsScreenState extends State<InventoryMovementsScreen> {
       final loadedMovements = await engine.movements(itemId: selectedItem);
       if (mounted) setState(() { items = loadedItems; movements = loadedMovements; loading = false; });
     } catch (value) {
-      if (mounted) setState(() { loading = false; error = 'تعذر تحميل حركات المخزون: $value'; });
+      if (mounted) setState(() {
+        loading = false;
+        error = userFacingError(value, fallback: 'تعذر تحميل حركات المخزون. اضغط تحديث وحاول مجددًا');
+      });
     }
   }
 

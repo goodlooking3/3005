@@ -93,7 +93,8 @@ extension _HomeShellActions on _HomeShellState {
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('تعذر إنشاء النسخة الاحتياطية: $error')),
+          SnackBar(content: Text(userFacingError(error,
+              fallback: 'تعذر إنشاء النسخة الاحتياطية. حاول مجددًا'))),
         );
       }
     }
@@ -126,7 +127,8 @@ extension _HomeShellActions on _HomeShellState {
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('تعذر استعادة النسخة المشفرة: $error')),
+          SnackBar(content: Text(userFacingError(error,
+              fallback: 'تعذر استعادة النسخة المشفرة. تحقق من الملف وحاول مجددًا'))),
         );
       }
     }
@@ -264,7 +266,8 @@ extension _HomeShellActions on _HomeShellState {
               } catch (error) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('تعذر حفظ العملية: $error')),
+                    SnackBar(content: Text(userFacingError(error,
+                        fallback: 'تعذر حفظ العملية. راجع البيانات وحاول مجددًا'))),
                   );
                 }
               }
@@ -307,7 +310,8 @@ extension _HomeShellActions on _HomeShellState {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('تعذر فتح نموذج السند: $error')));
+        ).showSnackBar(SnackBar(content: Text(userFacingError(error,
+            fallback: 'تعذر فتح نموذج السند. حاول مجددًا'))));
       }
     }
   }
