@@ -19,6 +19,7 @@ class _InventoryMovementsScreenState extends State<InventoryMovementsScreen> {
   List<InventoryMovement> movements = [];
   int? selectedItem;
   bool loading = true;
+  String? error;
 
   @override
   void initState() {
@@ -27,15 +28,13 @@ class _InventoryMovementsScreenState extends State<InventoryMovementsScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => loading = true);
-    final loadedItems = await inventory.items(activeOnly: false);
-    final loadedMovements = await engine.movements(itemId: selectedItem);
-    if (mounted) {
-      setState(() {
-        items = loadedItems;
-        movements = loadedMovements;
-        loading = false;
-      });
+    if (mounted) setState(() { loading = true; error = null; });
+    try {
+      final loadedItems = await inventory.items(activeOnly: false);
+      final loadedMovements = await engine.movements(itemId: selectedItem);
+      if (mounted) setState(() { items = loadedItems; movements = loadedMovements; loading = false; });
+    } catch (value) {
+      if (mounted) setState(() { loading = false; error = 'تعذر تحميل حركات المخزون: $value'; });
     }
   }
 
@@ -65,6 +64,11 @@ class _InventoryMovementsScreenState extends State<InventoryMovementsScreen> {
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
             children: [
               _summaryCard(),
+              if (error != null) Card(color: Colors.red.shade50, child: ListTile(
+                leading: const Icon(Icons.error_outline, color: Colors.red),
+                title: Text(error!),
+                trailing: IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+              )),
               const SizedBox(height: 16),
               DropdownButtonFormField<int?>(
                 value: selectedItem,

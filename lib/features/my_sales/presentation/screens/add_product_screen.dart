@@ -17,14 +17,21 @@ class _AddProductScreenState extends State<AddProductScreen> {
   final sale = TextEditingController();
   final quantity = TextEditingController();
   final threshold = TextEditingController(text: '5');
+  bool saving = false;
+  String? error;
 
   @override
   void dispose() { name.dispose(); sku.dispose(); cost.dispose(); sale.dispose(); quantity.dispose(); threshold.dispose(); super.dispose(); }
 
   Future<void> save() async {
     if (!(formKey.currentState?.validate() ?? false)) return;
-    await InventoryLocalDb().save(InventoryItem(name: name.text.trim(), sku: sku.text.trim(), costPrice: double.parse(cost.text), salePrice: double.parse(sale.text), quantity: double.parse(quantity.text), lowStockThreshold: double.parse(threshold.text)));
-    if (mounted) Navigator.pop(context);
+    setState(() { saving = true; error = null; });
+    try {
+      await InventoryLocalDb().save(InventoryItem(name: name.text.trim(), sku: sku.text.trim(), costPrice: double.parse(cost.text), salePrice: double.parse(sale.text), quantity: double.parse(quantity.text), lowStockThreshold: double.parse(threshold.text)));
+      if (mounted) Navigator.pop(context, true);
+    } catch (value) {
+      if (mounted) setState(() { saving = false; error = 'تعذر حفظ المنتج: $value'; });
+    }
   }
 
   String? requiredNumber(String? value) {
@@ -42,7 +49,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
         TextFormField(controller: sale, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'سعر البيع'), validator: requiredNumber),
         TextFormField(controller: quantity, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'الكمية المتوفرة'), validator: requiredNumber),
         TextFormField(controller: threshold, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'حد التنبيه'), validator: requiredNumber),
+        if (error != null) Card(color: Colors.red.shade50, child: Padding(padding: const EdgeInsets.all(12), child: Text(error!))),
         const SizedBox(height: 22),
-        FilledButton.icon(onPressed: save, icon: const Icon(Icons.save), label: const Text('حفظ المنتج')),
+        FilledButton.icon(onPressed: saving ? null : save, icon: saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save), label: Text(saving ? 'جارٍ الحفظ...' : 'حفظ المنتج')),
       ])));
 }

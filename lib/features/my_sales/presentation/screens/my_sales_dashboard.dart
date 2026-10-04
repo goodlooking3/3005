@@ -22,6 +22,8 @@ class _MySalesDashboardState extends State<MySalesDashboard> {
   final sales = SalesEngine();
   List<InventoryItem> items = [];
   Map<String, double> summary = {'sales': 0, 'costs': 0, 'profit': 0};
+  bool loading = true;
+  String? error;
 
   @override
   void initState() {
@@ -30,20 +32,25 @@ class _MySalesDashboardState extends State<MySalesDashboard> {
   }
 
   Future<void> _load() async {
-    if (kIsWeb && ProductionConfig.webReviewMode) {
-      await inventory.seedIfEmpty();
+    if (mounted) setState(() { loading = true; error = null; });
+    try {
+      if (kIsWeb && ProductionConfig.webReviewMode) {
+        await inventory.seedIfEmpty();
+      }
+      final loaded = await inventory.items();
+      final totals = await sales.summary();
+      if (mounted) setState(() { items = loaded; summary = totals; loading = false; });
+    } catch (value) {
+      if (mounted) setState(() { loading = false; error = 'تعذر تحميل لوحة المبيعات: $value'; });
     }
-    final loaded = await inventory.items();
-    final totals = await sales.summary();
-    if (mounted)
-      setState(() {
-        items = loaded;
-        summary = totals;
-      });
   }
 
   @override
-  Widget build(BuildContext context) => SingleChildScrollView(
+  Widget build(BuildContext context) {
+    if (loading && items.isEmpty) {
+      return const Center(child: Padding(padding: EdgeInsets.all(48), child: CircularProgressIndicator()));
+    }
+    return SingleChildScrollView(
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         LayoutBuilder(
@@ -77,6 +84,12 @@ class _MySalesDashboardState extends State<MySalesDashboard> {
             ],
           ),
         ),
+        if (error != null)
+          Card(color: Colors.red.shade50, child: ListTile(
+            leading: const Icon(Icons.error_outline, color: Colors.red),
+            title: Text(error!),
+            trailing: IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+          )),
         const SizedBox(height: 16),
         Wrap(spacing: 10, runSpacing: 10, children: [
           OutlinedButton.icon(
@@ -169,4 +182,5 @@ class _MySalesDashboardState extends State<MySalesDashboard> {
                         color: item.lowStock ? Colors.orange : Colors.green,
                         fontWeight: FontWeight.bold))))),
       ]));
+  }
 }

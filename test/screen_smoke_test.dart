@@ -10,6 +10,7 @@ import 'package:wasel/features/connectors/application/connector_center_controlle
 import 'package:wasel/features/connectors/presentation/connector_center_screen.dart';
 import 'package:wasel/features/my_purchases/presentation/screens/marketplace_screen.dart';
 import 'package:wasel/features/my_sales/presentation/screens/inventory_movements_screen.dart';
+import 'package:wasel/features/my_sales/presentation/screens/add_product_screen.dart';
 import 'package:wasel/features/my_sales/presentation/screens/my_sales_dashboard.dart';
 import 'package:wasel/features/my_sales/presentation/screens/sales_reversals_screen.dart';
 import 'package:wasel/features/my_sales/presentation/screens/sales_invoice_screen.dart';
@@ -41,6 +42,7 @@ void main() {
 
     await renders(tester, const MySalesDashboard());
     await renders(tester, const InventoryMovementsScreen());
+    await renders(tester, const AddProductScreen());
     await renders(tester, const SalesReversalsScreen());
     await renders(tester, const SalesInvoiceScreen());
     await renders(tester, const MarketplaceScreen());
