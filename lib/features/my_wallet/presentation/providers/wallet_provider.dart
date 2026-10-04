@@ -58,30 +58,43 @@ class WalletProvider extends ChangeNotifier {
   }
 
   Future<void> addWallet(Wallet wallet, {WalletAccount? account}) async {
-    if (account != null) {
-      final linked = await chartCatalog.ensureWalletAccount(
-        walletName: account.name,
-        currency: account.currency,
-      );
-      await repository.saveWalletWithAccount(wallet, WalletAccount(
-        id: account.id,
-        accountId: linked.id,
-        accountingCode: linked.code,
-        accountingName: linked.name,
-        walletId: account.walletId,
-        name: account.name,
-        currency: account.currency,
-        balance: account.balance,
-        active: account.active,
-      ));
-    } else {
-      await repository.saveWallet(wallet);
+    try {
+      error = null;
+      notifyListeners();
+      if (account != null) {
+        final linked = await chartCatalog.ensureWalletAccount(
+          walletName: account.name,
+          currency: account.currency,
+        );
+        await repository.saveWalletWithAccount(wallet, WalletAccount(
+          id: account.id,
+          accountId: linked.id,
+          accountingCode: linked.code,
+          accountingName: linked.name,
+          walletId: account.walletId,
+          name: account.name,
+          currency: account.currency,
+          balance: account.balance,
+          active: account.active,
+        ));
+      } else {
+        await repository.saveWallet(wallet);
+      }
+      await load();
+    } catch (_) {
+      error = 'تعذر حفظ المحفظة أو ربطها بالحساب المحاسبي';
+      notifyListeners();
     }
-    await load();
   }
-
   Future<void> importTransactions(List<WalletTransaction> values) async {
-    await repository.importTransactions(values);
-    await load();
+    try {
+      error = null;
+      notifyListeners();
+      await repository.importTransactions(values);
+      await load();
+    } catch (_) {
+      error = 'تعذر استيراد الحركات؛ راجع الصفوف المرفوضة وحاول مجددًا';
+      notifyListeners();
+    }
   }
 }
