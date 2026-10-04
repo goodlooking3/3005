@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/accounting.dart';
 import '../providers/wallet_provider.dart';
+import 'wallet_account_editor_dialog.dart';
 import '../widgets/transaction_filters_widget.dart';
 import '../widgets/transfer_dialog.dart';
 import '../widgets/wallet_card_widget.dart';
@@ -59,9 +61,33 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
                 padding: const EdgeInsets.all(20),
                 children: [
                   if (state.error != null) _error(state.error!),
-                  Text(
-                    'المحافظ والحسابات',
-                    style: Theme.of(context).textTheme.titleLarge,
+                  Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      Text(
+                        'المحافظ والحسابات',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: _addWallet,
+                            icon: const Icon(Icons.add_card),
+                            label: const Text('إضافة محفظة'),
+                          ),
+                          if (state.wallets.isNotEmpty)
+                            FilledButton.tonalIcon(
+                              onPressed: () => _addAccount(state.wallets.first),
+                              icon: const Icon(Icons.account_balance_outlined),
+                              label: const Text('إضافة حساب'),
+                            ),
+                        ],
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   if (state.wallets.isEmpty)
@@ -82,20 +108,14 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
                         ),
                       ),
                     ),
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount:
-                          MediaQuery.sizeOf(context).width > 800 ? 3 : 1,
-                      childAspectRatio:
-                          MediaQuery.sizeOf(context).width > 800 ? 1.55 : 2.2,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
+                  ...state.wallets.map(
+                    (wallet) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: WalletCardWidget(
+                        wallet: wallet,
+                        onAddAccount: () => _addAccount(wallet),
+                      ),
                     ),
-                    itemCount: state.wallets.length,
-                    itemBuilder: (_, index) =>
-                        WalletCardWidget(wallet: state.wallets[index]),
                   ),
                   const SizedBox(height: 28),
                   Row(
@@ -126,6 +146,43 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
         color: Colors.red.shade50,
         child: Padding(padding: const EdgeInsets.all(12), child: Text(message)),
       );
+
+  Future<void> _addAccount(Wallet wallet) async {
+    try {
+      final accounts = await widget.provider.chartCatalog.repository.accounts();
+      final eligible = accounts
+          .where(
+            (account) =>
+                account.id != null &&
+                !account.isGroup &&
+                account.active &&
+                (account.kind == AccountKind.cash ||
+                    account.kind == AccountKind.bank),
+          )
+          .toList(growable: false);
+      if (!mounted) return;
+      final saved = await showDialog<bool>(
+        context: context,
+        builder: (_) => WalletAccountEditorDialog(
+          wallet: wallet,
+          accountingAccounts: eligible,
+          provider: widget.provider,
+        ),
+      );
+      if (saved == true && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم ربط الحسابات والعملات المحددة بالمحفظة')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر تحميل الحسابات النقدية والبنكية')),
+        );
+      }
+    }
+  }
+
   Widget _transactionTile(WalletTransaction item) => Card(
         child: ListTile(
           leading: CircleAvatar(child: Icon(_icon(item.type))),

@@ -86,6 +86,21 @@ class WalletProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  Future<bool> addAccounts(List<WalletAccount> accounts) async {
+    try {
+      error = null;
+      notifyListeners();
+      await repository.saveAccounts(accounts);
+      await load();
+      return true;
+    } catch (_) {
+      error = 'تعذر ربط الحسابات بالمحفظة؛ لم تُحفظ تغييرات جزئية';
+      notifyListeners();
+      return false;
+    }
+  }
+
   Future<void> importTransactions(List<WalletTransaction> values) async {
     try {
       error = null;

@@ -133,30 +133,12 @@ class WalletRepositoryImpl implements IWalletRepository {
             },
             conflictAlgorithm: ConflictAlgorithm.replace,
           );
-          final linked = await txn.query(
-            'accounts',
-            columns: ['id'],
-            where: "id = ? AND active = 1 AND kind IN ('cash', 'bank')",
-            whereArgs: [account.accountId],
-            limit: 1,
+          await _validateWalletAccountLink(txn, account);
+          await txn.insert(
+            'wallet_accounts',
+            _walletAccountValues(account),
+            conflictAlgorithm: ConflictAlgorithm.replace,
           );
-          if (linked.isEmpty) {
-            throw StateError('الحساب المحاسبي المرتبط غير موجود أو غير نشط');
-          }
-          await txn.insert('wallet_accounts', {
-            'wallet_id': account.walletId,
-            'name': account.name.trim(),
-            'currency': account.currency.trim().toUpperCase(),
-            'balance': account.balance,
-            'active': account.active ? 1 : 0,
-            'account_id': account.accountId,
-            'external_type': account.externalType,
-            'external_id': account.externalId,
-            'connection_status': account.connectionStatus,
-            'balance_source': account.balanceSource,
-            'last_synced_at': account.lastSyncedAt?.toIso8601String(),
-            'last_error': account.lastError,
-          }, conflictAlgorithm: ConflictAlgorithm.replace);
         });
       });
 
@@ -166,37 +148,98 @@ class WalletRepositoryImpl implements IWalletRepository {
         if (account.name.trim().isEmpty || account.currency.trim().isEmpty) {
           throw ArgumentError('بيانات حساب المحفظة غير مكتملة');
         }
-        if (account.accountId != null) {
-          final linked = await db.query(
-            'accounts',
-            columns: ['id', 'active'],
-            where: "id = ? AND active = 1 AND kind IN ('cash', 'bank')",
-            whereArgs: [account.accountId],
-            limit: 1,
-          );
-          if (linked.isEmpty) {
-            throw StateError('الحساب المحاسبي المرتبط غير موجود أو غير نشط');
-          }
+        await _validateWalletAccountLink(db, account);
+        final values = _walletAccountValues(account);
+        if (account.id == null) {
+          return db.insert('wallet_accounts', values);
         }
-        return db.insert(
+        final updated = await db.update(
           'wallet_accounts',
-          {
-            'wallet_id': account.walletId,
-            'name': account.name.trim(),
-            'currency': account.currency.trim().toUpperCase(),
-            'balance': account.balance,
-            'active': account.active ? 1 : 0,
-            'account_id': account.accountId,
-            'external_type': account.externalType,
-            'external_id': account.externalId,
-            'connection_status': account.connectionStatus,
-            'balance_source': account.balanceSource,
-            'last_synced_at': account.lastSyncedAt?.toIso8601String(),
-            'last_error': account.lastError,
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace,
+          values,
+          where: 'id = ? AND wallet_id = ?',
+          whereArgs: [account.id, account.walletId],
         );
+        if (updated == 0) throw StateError('حساب المحفظة غير موجود');
+        return account.id!;
       });
+
+  @override
+  Future<void> saveAccounts(List<WalletAccount> accounts) async {
+    if (accounts.isEmpty) throw ArgumentError('اختر عملة واحدة على الأقل');
+    await LocalDatabase.instance.write((db) async {
+      await db.transaction((txn) async {
+        final identities = <String>{};
+        for (final account in accounts) {
+          if (account.id != null ||
+              account.name.trim().isEmpty ||
+              account.currency.trim().isEmpty) {
+            throw ArgumentError('بيانات حساب المحفظة غير صالحة');
+          }
+          final identity =
+              '${account.walletId}|${account.name.trim().toLowerCase()}|${account.currency.trim().toUpperCase()}';
+          if (!identities.add(identity)) {
+            throw StateError('تكررت عملة الحساب في طلب الحفظ');
+          }
+          await _validateWalletAccountLink(txn, account);
+        }
+        for (final account in accounts) {
+          await txn.insert(
+            'wallet_accounts',
+            _walletAccountValues(account),
+            conflictAlgorithm: ConflictAlgorithm.abort,
+          );
+        }
+      });
+    });
+  }
+
+  Future<void> _validateWalletAccountLink(
+    DatabaseExecutor db,
+    WalletAccount account,
+  ) async {
+    final accountId = account.accountId;
+    final currency = account.currency.trim().toUpperCase();
+    if (accountId == null || accountId <= 0 || currency.isEmpty) {
+      throw StateError('يجب ربط حساب المحفظة بحساب نقدي أو بنكي وعملة صالحة');
+    }
+    final rows = await db.query(
+      'accounts',
+      columns: ['id', 'currency', 'is_group'],
+      where: "id = ? AND active = 1 AND kind IN ('cash', 'bank')",
+      whereArgs: [accountId],
+      limit: 1,
+    );
+    if (rows.isEmpty || (rows.single['is_group'] as int? ?? 0) == 1) {
+      throw StateError('اختر حسابًا نقديًا أو بنكيًا تفصيليًا ونشطًا');
+    }
+    final permitted = await db.query(
+      'account_currencies',
+      columns: ['currency'],
+      where: 'account_id = ?',
+      whereArgs: [accountId],
+    );
+    final allowed = permitted.isEmpty
+        ? <String>{(rows.single['currency']! as String).toUpperCase()}
+        : permitted.map((row) => (row['currency']! as String).toUpperCase()).toSet();
+    if (!allowed.contains(currency)) {
+      throw StateError('العملة المحددة غير مسموحة لهذا الحساب المحاسبي');
+    }
+  }
+
+  Map<String, Object?> _walletAccountValues(WalletAccount account) => {
+        'wallet_id': account.walletId,
+        'name': account.name.trim(),
+        'currency': account.currency.trim().toUpperCase(),
+        'balance': account.balance,
+        'active': account.active ? 1 : 0,
+        'account_id': account.accountId,
+        'external_type': account.externalType,
+        'external_id': account.externalId,
+        'connection_status': account.connectionStatus,
+        'balance_source': account.balanceSource,
+        'last_synced_at': account.lastSyncedAt?.toIso8601String(),
+        'last_error': account.lastError,
+      };
 
   @override
   Future<int> saveTransaction(WalletTransaction transaction) async {

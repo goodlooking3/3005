@@ -5,7 +5,13 @@ import '../../domain/models/wallet_model.dart';
 class WalletCardWidget extends StatelessWidget {
   final Wallet wallet;
   final VoidCallback? onTap;
-  const WalletCardWidget({super.key, required this.wallet, this.onTap});
+  final VoidCallback? onAddAccount;
+  const WalletCardWidget({
+    super.key,
+    required this.wallet,
+    this.onTap,
+    this.onAddAccount,
+  });
 
   @override
   Widget build(BuildContext context) => Card(
@@ -93,6 +99,17 @@ class WalletCardWidget extends StatelessWidget {
                     style: TextStyle(color: Colors.blueGrey.shade500, fontSize: 11),
                   ),
                 ),
+                if (onAddAccount != null) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: TextButton.icon(
+                      onPressed: onAddAccount,
+                      icon: const Icon(Icons.add_circle_outline),
+                      label: const Text('إضافة حساب أو عملة'),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
