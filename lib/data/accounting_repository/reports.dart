@@ -3,49 +3,46 @@ part of '../accounting_repository.dart';
 extension AccountingRepositoryReports on AccountingRepository {
   Future<FinancialSummary> summary() async {
     final db = await _db;
-    final totals = await db.rawQuery(
-      '''SELECT
-        COALESCE(SUM(COALESCE(jl.base_debit, jl.debit)), 0) debits,
-        COALESCE(SUM(COALESCE(jl.base_credit, jl.credit)), 0) credits
-      FROM journal_lines jl
-      JOIN journal_entries je ON je.id = jl.journal_entry_id''',
-    );
+    await AccountingAuthorization.instance
+        .requireRead(db, AccountingPermission.viewLedger);
+    final balances = await accountBalances(includeInactive: true);
+    var debits = 0.0;
+    var credits = 0.0;
+    var cashBalance = 0.0;
+    var bankBalance = 0.0;
+    for (final balance in balances) {
+      if ((balance.debitTotal > accountingTolerance ||
+              balance.creditTotal > accountingTolerance) &&
+          (balance.baseDebitTotal == null || balance.baseCreditTotal == null)) {
+        throw StateError(
+          'تعذر جمع الرصيد الأساسي للحساب ${balance.accountCode} بعملة ${balance.currency}',
+        );
+      }
+      debits += balance.baseDebitTotal ?? 0;
+      credits += balance.baseCreditTotal ?? 0;
+      if (!balance.isGroup &&
+          (balance.kind == AccountKind.cash ||
+              balance.kind == AccountKind.bank)) {
+        final baseBalance = balance.baseBalance;
+        if (baseBalance == null) {
+          throw StateError(
+            'رصيد افتتاحي غير مقوم للحساب ${balance.accountCode}؛ لا يمكن جمع أرصدة الصندوق/البنك',
+          );
+        }
+        if (balance.kind == AccountKind.cash) cashBalance += baseBalance;
+        if (balance.kind == AccountKind.bank) bankBalance += baseBalance;
+      }
+    }
     final count = Sqflite.firstIntValue(
           await db.rawQuery('SELECT COUNT(*) FROM vouchers'),
         ) ??
         0;
-    final cash = await db.rawQuery('''
-      SELECT COALESCE(SUM(a.opening_balance + COALESCE(j.debit, 0) - COALESCE(j.credit, 0)), 0) total
-      FROM accounts a
-      LEFT JOIN (
-        SELECT jl.account_id,
-          SUM(COALESCE(jl.base_debit, jl.debit)) debit,
-          SUM(COALESCE(jl.base_credit, jl.credit)) credit
-        FROM journal_lines jl
-        JOIN journal_entries je ON je.id = jl.journal_entry_id
-        GROUP BY jl.account_id
-      ) j ON j.account_id = a.id
-      WHERE a.kind = 'cash' AND a.active = 1 AND a.is_group = 0
-    ''');
-    final bank = await db.rawQuery('''
-      SELECT COALESCE(SUM(a.opening_balance + COALESCE(j.debit, 0) - COALESCE(j.credit, 0)), 0) total
-      FROM accounts a
-      LEFT JOIN (
-        SELECT jl.account_id,
-          SUM(COALESCE(jl.base_debit, jl.debit)) debit,
-          SUM(COALESCE(jl.base_credit, jl.credit)) credit
-        FROM journal_lines jl
-        JOIN journal_entries je ON je.id = jl.journal_entry_id
-        GROUP BY jl.account_id
-      ) j ON j.account_id = a.id
-      WHERE a.kind = 'bank' AND a.active = 1 AND a.is_group = 0
-    ''');
     return FinancialSummary(
-      totalDebits: (totals.first['debits'] as num).toDouble(),
-      totalCredits: (totals.first['credits'] as num).toDouble(),
+      totalDebits: debits,
+      totalCredits: credits,
       vouchersCount: count,
-      cashBalance: (cash.first['total'] as num).toDouble(),
-      bankBalance: (bank.first['total'] as num).toDouble(),
+      cashBalance: cashBalance,
+      bankBalance: bankBalance,
     );
   }
 
@@ -73,7 +70,10 @@ extension AccountingRepositoryReports on AccountingRepository {
         details: details,
       );
   Future<List<AuditRecord>> audit() async {
-    final rows = await (await _db).query(
+    final db = await _db;
+    await AccountingAuthorization.instance
+        .requireRead(db, AccountingPermission.viewAudit);
+    final rows = await db.query(
       'audit_log',
       orderBy: 'created_at DESC',
     );

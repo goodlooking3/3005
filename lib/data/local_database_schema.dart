@@ -2,12 +2,14 @@ import 'package:sqflite/sqflite.dart';
 
 part 'local_database_schema_tables.dart';
 part 'local_database_schema_migrations.dart';
+part 'local_database_schema_accounting_guards.dart';
 
 class LocalDatabaseSchema {
   static Future<void> createInitialSchema(Database db) async {
     await _createCoreTables(db);
     await _createEnterpriseTables(db);
     await _ensureAuditTrail(db);
+    await _ensurePhase2AccountingControls(db);
   }
 
   static Future<void> upgrade(Database db, int oldVersion) async {
@@ -65,9 +67,10 @@ class LocalDatabaseSchema {
     }
     if (oldVersion < 19) await _createWalletIntegrityIndexes(db);
     if (oldVersion < 20) await _addWalletAccountReferenceColumns(db);
-    if (oldVersion < 21)
+    if (oldVersion < 21) {
       await _addColumnIfMissing(db, 'wallet_transactions', 'status',
           "TEXT NOT NULL DEFAULT 'posted'");
+    }
     if (oldVersion < 22) await _addWalletAccountMetadata(db);
     if (oldVersion < 23) await _addWalletOperationMetadata(db);
     if (oldVersion < 24) {
@@ -111,5 +114,6 @@ class LocalDatabaseSchema {
           db, 'parties', 'credit_limit', 'REAL NOT NULL DEFAULT 0');
     }
     if (oldVersion < 28) await _ensureAuditTrail(db);
+    if (oldVersion < 29) await _ensurePhase2AccountingControls(db);
   }
 }

@@ -268,6 +268,7 @@ Future<void> _createSensitiveChangeAuditTriggers(Database db) async {
     'sales_return_lines': 'id',
     'remittances': 'id',
     'sync_queue': 'id',
+    'accounting_periods': 'id',
   };
   final existingRows = await db.rawQuery(
     "SELECT name FROM sqlite_master WHERE type = 'table'",
@@ -309,4 +310,146 @@ Future<void> _createSensitiveChangeAuditTriggers(Database db) async {
       await db.execute(trigger);
     }
   }
+}
+
+Future<void> _ensurePhase2AccountingControls(Database db) async {
+  await _addColumnIfMissing(
+    db,
+    'journal_entries',
+    'reversal_of_id',
+    'INTEGER REFERENCES journal_entries(id)',
+  );
+  await db.execute('''
+    CREATE TABLE IF NOT EXISTS accounting_periods (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'closed')),
+      created_at TEXT NOT NULL,
+      closed_at TEXT,
+      closed_by TEXT,
+      CHECK(start_date <= end_date)
+    )
+  ''');
+  await db.execute('''
+    CREATE TABLE IF NOT EXISTS document_sequences (
+      prefix TEXT NOT NULL,
+      period_key TEXT NOT NULL,
+      current_value INTEGER NOT NULL DEFAULT 0 CHECK(current_value >= 0),
+      PRIMARY KEY(prefix, period_key)
+    )
+  ''');
+
+  final duplicateVouchers = await db.rawQuery('''
+    SELECT number, COUNT(*) AS row_count FROM vouchers
+    GROUP BY number COLLATE NOCASE HAVING COUNT(*) > 1 LIMIT 1
+  ''');
+  if (duplicateVouchers.isNotEmpty) {
+    throw StateError(
+      'PHASE2 migration stopped: duplicate voucher numbers require review',
+    );
+  }
+  final duplicateEntries = await db.rawQuery('''
+    SELECT number, COUNT(*) AS row_count FROM journal_entries
+    GROUP BY number COLLATE NOCASE HAVING COUNT(*) > 1 LIMIT 1
+  ''');
+  if (duplicateEntries.isNotEmpty) {
+    throw StateError(
+      'PHASE2 migration stopped: duplicate journal numbers require review',
+    );
+  }
+  await db.execute(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_vouchers_number_unique ON vouchers(number COLLATE NOCASE)',
+  );
+  await db.execute(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_journal_entries_number_unique ON journal_entries(number COLLATE NOCASE)',
+  );
+  await db.execute(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_journal_entries_reversal_unique ON journal_entries(reversal_of_id) WHERE reversal_of_id IS NOT NULL',
+  );
+  await db.execute(
+    'CREATE INDEX IF NOT EXISTS idx_accounting_periods_dates ON accounting_periods(start_date, end_date, status)',
+  );
+  await _createAccountingPeriodGuards(db);
+  await _createJournalAppendOnlyGuards(db);
+  await _createJournalPeriodGuard(db);
+  await _createAccountingRoleGuards(db);
+  await _createSensitiveChangeAuditTriggers(db);
+  await db.insert(
+    'user_profile',
+    {'id': 1, 'display_name': 'المستخدم', 'role': 'admin'},
+    conflictAlgorithm: ConflictAlgorithm.ignore,
+  );
+}
+
+Future<void> _createAccountingPeriodGuards(Database db) async {
+  await db.execute('''
+    CREATE TRIGGER IF NOT EXISTS accounting_periods_no_overlap_insert
+    BEFORE INSERT ON accounting_periods
+    WHEN EXISTS (
+      SELECT 1 FROM accounting_periods p
+      WHERE NEW.start_date <= p.end_date AND NEW.end_date >= p.start_date
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'accounting periods cannot overlap');
+    END
+  ''');
+  await db.execute('''
+    CREATE TRIGGER IF NOT EXISTS accounting_periods_no_overlap_update
+    BEFORE UPDATE OF start_date, end_date ON accounting_periods
+    WHEN EXISTS (
+      SELECT 1 FROM accounting_periods p
+      WHERE p.id != OLD.id
+        AND NEW.start_date <= p.end_date AND NEW.end_date >= p.start_date
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'accounting periods cannot overlap');
+    END
+  ''');
+  await db.execute('''
+    CREATE TRIGGER IF NOT EXISTS accounting_periods_closed_no_update
+    BEFORE UPDATE ON accounting_periods WHEN OLD.status = 'closed'
+    BEGIN
+      SELECT RAISE(ABORT, 'closed accounting period is immutable');
+    END
+  ''');
+  await db.execute('''
+    CREATE TRIGGER IF NOT EXISTS accounting_periods_closed_no_delete
+    BEFORE DELETE ON accounting_periods WHEN OLD.status = 'closed'
+    BEGIN
+      SELECT RAISE(ABORT, 'closed accounting period is immutable');
+    END
+  ''');
+}
+
+Future<void> _createJournalAppendOnlyGuards(Database db) async {
+  for (final table in ['journal_entries', 'journal_lines']) {
+    for (final operation in ['UPDATE', 'DELETE']) {
+      final name = 'phase2_${table}_${operation.toLowerCase()}_blocked';
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS $name
+        BEFORE $operation ON $table
+        BEGIN
+          SELECT RAISE(ABORT, 'posted journal is append-only; create a reversal');
+        END
+      ''');
+    }
+  }
+}
+
+Future<void> _createJournalPeriodGuard(Database db) async {
+  await db.execute('''
+    CREATE TRIGGER IF NOT EXISTS journal_entry_open_period_required
+    BEFORE INSERT ON journal_entries
+    WHEN EXISTS (SELECT 1 FROM accounting_periods)
+      AND NOT EXISTS (
+        SELECT 1 FROM accounting_periods p
+        WHERE substr(NEW.entry_date, 1, 10) BETWEEN p.start_date AND p.end_date
+          AND p.status = 'open'
+      )
+    BEGIN
+      SELECT RAISE(ABORT, 'journal entry date is outside an open accounting period');
+    END
+  ''');
 }

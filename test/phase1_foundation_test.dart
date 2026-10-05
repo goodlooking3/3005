@@ -20,12 +20,13 @@ void main() {
 
   setUp(() async => LocalDatabase.instance.resetForTests());
 
-  test('fresh schema is v28 with append-only audit and FK integrity', () async {
+  test('fresh schema is v29 with append-only ledger and FK integrity',
+      () async {
     final db = await LocalDatabase.instance.database;
     final version = Sqflite.firstIntValue(
       await db.rawQuery('PRAGMA user_version'),
     );
-    expect(version, 28);
+    expect(version, 29);
 
     final auditColumns = await db.rawQuery('PRAGMA table_info(audit_log)');
     expect(
@@ -189,13 +190,11 @@ void main() {
   test('v27 migration preserves legacy rows and installs audited writes',
       () async {
     final directory = await Directory.systemTemp.createTemp('wasel-v27-');
-    final path = '${directory.path}/wasel-v27.db';
-    final db = await databaseFactory.openDatabase(
-      path,
-      options: OpenDatabaseOptions(
-        version: 27,
-        onCreate: (database, _) async {
-          await database.execute('''
+    final db = await LocalDatabase.instance.openVersionedDatabaseForTests(
+      directory: directory.path,
+      version: 27,
+      onCreate: (database, _) async {
+        await database.execute('''
             CREATE TABLE audit_log (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               created_at TEXT NOT NULL,
@@ -203,25 +202,61 @@ void main() {
               details TEXT NOT NULL
             )
           ''');
-          await database.execute('''
+        await database.execute('''
             CREATE TABLE accounts (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               code TEXT NOT NULL,
               name TEXT NOT NULL
             )
           ''');
-          await database.insert('audit_log', {
-            'created_at': '2026-10-01T12:00:00.000Z',
-            'action': 'legacy_event',
-            'details': 'preserve this row',
-          });
-        },
-      ),
+        await database.execute(
+          'CREATE TABLE vouchers (id INTEGER PRIMARY KEY, number TEXT NOT NULL)',
+        );
+        await database.execute('''
+            CREATE TABLE journal_entries (
+              id INTEGER PRIMARY KEY,
+              voucher_id INTEGER NOT NULL,
+              entry_date TEXT NOT NULL,
+              number TEXT NOT NULL,
+              debit_total REAL NOT NULL,
+              credit_total REAL NOT NULL
+            )
+          ''');
+        await database.execute(
+          'CREATE TABLE journal_lines (id INTEGER PRIMARY KEY, journal_entry_id INTEGER NOT NULL)',
+        );
+        await database.execute(
+          'CREATE TABLE voucher_lines (id INTEGER PRIMARY KEY, voucher_id INTEGER NOT NULL)',
+        );
+        await database.execute(
+          'CREATE TABLE parties (id INTEGER PRIMARY KEY, name TEXT NOT NULL)',
+        );
+        await database.execute(
+          'CREATE TABLE company_profile (id INTEGER PRIMARY KEY, name TEXT NOT NULL)',
+        );
+        await database.execute('''
+            CREATE TABLE user_profile (
+              id INTEGER PRIMARY KEY,
+              display_name TEXT NOT NULL,
+              role TEXT NOT NULL DEFAULT 'admin'
+            )
+          ''');
+        await database.insert('audit_log', {
+          'created_at': '2026-10-01T12:00:00.000Z',
+          'action': 'legacy_event',
+          'details': 'preserve this row',
+        });
+      },
     );
     try {
       await LocalDatabaseSchema.upgrade(db, 27);
-      await db.execute('PRAGMA user_version = 28');
-      final legacy = (await db.query('audit_log')).single;
+      await db.execute('PRAGMA user_version = 29');
+      final legacy = (await db.query(
+        'audit_log',
+        where: 'action = ?',
+        whereArgs: ['legacy_event'],
+      ))
+          .single;
       expect(legacy['action'], 'legacy_event');
       expect(legacy['details'], 'preserve this row');
       expect(legacy['actor_id'], 'legacy/unknown');
@@ -229,7 +264,7 @@ void main() {
       expect(legacy['result'], 'legacy/unknown');
       expect(
         Sqflite.firstIntValue(await db.rawQuery('PRAGMA user_version')),
-        28,
+        29,
       );
 
       await db.insert('accounts', {'code': 'AFTER-MIGRATION', 'name': 'تجربة'});

@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/accounting.dart';
+import '../../../data/accounting_authorization.dart';
 import '../../../data/accounting_repository.dart';
+import '../../../data/local_database.dart';
 import 'account_tree.dart';
 
 class AccountEditorDialog extends StatefulWidget {
@@ -29,6 +33,8 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
   Account? parent;
   late bool isGroup;
   bool saving = false;
+  bool canManage = true;
+  bool checkingAccess = true;
   String? errorMessage;
 
   @override
@@ -37,7 +43,8 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
     final account = widget.account;
     code = TextEditingController(text: account?.code ?? '');
     name = TextEditingController(text: account?.name ?? '');
-    nameAr = TextEditingController(text: account?.nameAr ?? account?.name ?? '');
+    nameAr =
+        TextEditingController(text: account?.nameAr ?? account?.name ?? '');
     nameEn = TextEditingController(text: account?.nameEn ?? '');
     opening = TextEditingController(text: (account?.balance ?? 0).toString());
     kind = account?.kind ?? AccountKind.asset;
@@ -49,6 +56,28 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
       if (candidate.id == parentId) {
         parent = candidate;
         break;
+      }
+    }
+    unawaited(_checkAccess());
+  }
+
+  Future<void> _checkAccess() async {
+    try {
+      final db = await LocalDatabase.instance.database;
+      final allowed = await AccountingAuthorization.instance
+          .can(db, AccountingPermission.manageAccounts);
+      if (mounted) {
+        setState(() {
+          canManage = allowed;
+          checkingAccess = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          canManage = false;
+          checkingAccess = false;
+        });
       }
     }
   }
@@ -70,6 +99,8 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
           width: 460,
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
+              if (!checkingAccess && !canManage)
+                const Text('صلاحية تعديل دليل الحسابات غير متاحة لهذا الدور'),
               if (errorMessage != null) ...[
                 Container(
                   width: double.infinity,
@@ -98,11 +129,13 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
               TextField(
                   controller: nameAr,
                   enabled: !saving,
-                  decoration: const InputDecoration(labelText: 'الاسم بالعربي *')),
+                  decoration:
+                      const InputDecoration(labelText: 'الاسم بالعربي *')),
               TextField(
                   controller: nameEn,
                   enabled: !saving,
-                  decoration: const InputDecoration(labelText: 'الاسم بالإنجليزي')),
+                  decoration:
+                      const InputDecoration(labelText: 'الاسم بالإنجليزي')),
               DropdownButtonFormField<AccountKind>(
                   value: kind,
                   decoration: const InputDecoration(labelText: 'نوع الحساب'),
@@ -191,7 +224,8 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
               onPressed: saving ? null : () => Navigator.pop(context),
               child: const Text('إلغاء')),
           FilledButton(
-              onPressed: saving ? null : _save,
+              onPressed:
+                  saving || (!checkingAccess && !canManage) ? null : _save,
               child: Text(accountSaveLabel(widget.account))),
         ],
       );

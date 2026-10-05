@@ -1,5 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
+import '../data/accounting_authorization.dart';
+import '../data/currency_policy.dart';
 import '../data/local_database.dart';
 
 class LedgerRow {
@@ -65,6 +67,8 @@ class ReportService {
     String? currency,
   }) async {
     final db = await _db;
+    await AccountingAuthorization.instance
+        .requireRead(db, AccountingPermission.viewLedger);
     final filter = _filters(
       currency: currency,
       from: from,
@@ -74,6 +78,7 @@ class ReportService {
       currencyColumn: 'l.currency',
       accountColumn: 'l.account_id',
     );
+    if (currency == null) await _ensureBaseValuations(db, filter);
     final debit = _amount('l', 'debit', useBase: currency == null);
     final credit = _amount('l', 'credit', useBase: currency == null);
     final rows = await db.rawQuery(
@@ -104,6 +109,8 @@ class ReportService {
     DateTime? to,
   }) async {
     final db = await _db;
+    await AccountingAuthorization.instance
+        .requireRead(db, AccountingPermission.viewLedger);
     final filter = _filters(
       currency: currency,
       from: from,
@@ -111,6 +118,7 @@ class ReportService {
       dateColumn: 'je.entry_date',
       currencyColumn: 'jl.currency',
     );
+    if (currency == null) await _ensureBaseValuations(db, filter);
     final debit = _amount('jl', 'debit', useBase: currency == null);
     final credit = _amount('jl', 'credit', useBase: currency == null);
     final rows = await db.rawQuery(
@@ -145,6 +153,8 @@ class ReportService {
     DateTime? to,
   }) async {
     final db = await _db;
+    await AccountingAuthorization.instance
+        .requireRead(db, AccountingPermission.viewLedger);
     final filter = _filters(
       currency: currency,
       from: from,
@@ -152,9 +162,10 @@ class ReportService {
       dateColumn: 'je.entry_date',
       currencyColumn: 'l.currency',
     );
+    if (currency == null) await _ensureBaseValuations(db, filter);
     final debit = _amount('l', 'debit', useBase: currency == null);
     final credit = _amount('l', 'credit', useBase: currency == null);
-    final join = '''FROM journal_lines l
+    const join = '''FROM journal_lines l
       JOIN journal_entries je ON je.id = l.journal_entry_id
       JOIN accounts a ON a.id = l.account_id''';
     final where =
@@ -181,6 +192,8 @@ class ReportService {
     DateTime? to,
   }) async {
     final db = await _db;
+    await AccountingAuthorization.instance
+        .requireRead(db, AccountingPermission.viewLedger);
     final filter = _filters(
       currency: currency,
       from: from,
@@ -192,6 +205,7 @@ class ReportService {
     final credit = _amount('l', 'credit', useBase: currency == null);
     final where =
         filter.where.isEmpty ? '' : ' AND ${filter.where.substring(6)}';
+    if (currency == null) await _ensureBaseValuations(db, filter);
     final rows = await db.rawQuery(
       '''SELECT je.entry_date date, je.description,
         CASE WHEN $debit > 0 THEN $debit ELSE $credit END amount,
@@ -219,6 +233,31 @@ class ReportService {
       useBase
           ? 'COALESCE($alias.base_$column, $alias.$column)'
           : '$alias.$column';
+
+  Future<void> _ensureBaseValuations(
+    Database db,
+    _ReportFilter filter,
+  ) async {
+    final baseCurrency = await currencyPolicy.requireBaseCurrency(db);
+    final where = filter.where.isEmpty
+        ? ''
+        : ' AND ${filter.where.substring('WHERE '.length)}';
+    final missing = await db.rawQuery(
+      '''
+      SELECT l.id FROM journal_lines l
+      JOIN journal_entries je ON je.id = l.journal_entry_id
+      WHERE UPPER(COALESCE(l.currency, ?)) != ?
+        AND (l.base_debit IS NULL OR l.base_credit IS NULL)$where
+      LIMIT 1
+      ''',
+      [baseCurrency, baseCurrency, ...filter.args],
+    );
+    if (missing.isNotEmpty) {
+      throw StateError(
+        'تعذر إنشاء تقرير بالعملة الأساسية؛ توجد أسطر أجنبية بلا تقييم محفوظ',
+      );
+    }
+  }
 
   _ReportFilter _filters({
     String? currency,

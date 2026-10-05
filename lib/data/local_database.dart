@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 
 import 'dart:async';
 import '../core/models.dart';
+import 'accounting_authorization.dart';
 import 'local_database_schema.dart';
 import 'database_factory_web.dart'
     if (dart.library.io) 'database_factory_default.dart' as platform_database;
@@ -33,6 +34,17 @@ class LocalDatabase {
     _databaseDirectoryForTests = directory;
   }
 
+  @visibleForTesting
+  Future<Database> openVersionedDatabaseForTests({
+    required String directory,
+    required int version,
+    required Future<void> Function(Database db, int version) onCreate,
+  }) =>
+      databaseFactory.openDatabase(
+        p.join(directory, 'wasel.db'),
+        options: OpenDatabaseOptions(version: version, onCreate: onCreate),
+      );
+
   Future<Database> _openDatabase() async {
     platform_database.configureDatabaseFactoryForPlatform();
     final factory = databaseFactory;
@@ -44,7 +56,7 @@ class LocalDatabase {
     _db = await factory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 28,
+        version: 29,
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON');
           if (!kIsWeb) {
@@ -71,6 +83,7 @@ class LocalDatabase {
         return await operation(db);
       } catch (error) {
         try {
+          final denied = error is AuthorizationDeniedException ? error : null;
           final context = await db.query(
             'audit_context',
             columns: ['actor_id', 'session_id'],
@@ -83,11 +96,13 @@ class LocalDatabase {
             'created_at': DateTime.now().toUtc().toIso8601String(),
             'actor_id': current?['actor_id'] ?? 'local-owner',
             'session_id': current?['session_id'],
-            'entity_type': 'application',
-            'entity_id': null,
-            'action': 'db.write',
+            'entity_type': denied == null ? 'application' : 'permission',
+            'entity_id': denied?.permission.name,
+            'action': denied == null ? 'db.write' : 'authorization.denied',
             'result': 'failure',
-            'details': 'operation failed (${error.runtimeType})',
+            'details': denied != null
+                ? 'role=${denied.role}; required=${denied.permission.name}'
+                : 'operation failed (${error.runtimeType})',
           });
         } catch (_) {
           // Preserve the original write failure if the audit sink is unavailable.

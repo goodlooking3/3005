@@ -24,7 +24,7 @@ void main() {
           code: 'T-CASH',
           name: 'اختبار الصندوق',
           type: 'صندوق',
-          kind: AccountKind.asset,
+          kind: AccountKind.cash,
           currency: 'YER',
           currencies: ['YER', 'SAR'],
         ),

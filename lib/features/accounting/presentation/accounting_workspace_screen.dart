@@ -7,6 +7,7 @@ import 'account_editor_dialog.dart';
 import 'account_directory_transfer_screen.dart';
 import 'account_tree.dart';
 import 'party_editor_dialog.dart';
+import 'accounting_periods_dialog.dart';
 import 'voucher_editor_dialog.dart';
 import 'account_management_screens.dart';
 
@@ -73,9 +74,9 @@ class _AccountingWorkspaceScreenState extends State<AccountingWorkspaceScreen>
         parties = result[1] as List<Party>;
         summary = result[2] as FinancialSummary;
         loading = false;
-          error = chart.error == null
-              ? null
-              : 'تعذر تحميل دليل الحسابات. اضغط تحديث وحاول مجددًا';
+        error = chart.error == null
+            ? null
+            : 'تعذر تحميل دليل الحسابات. اضغط تحديث وحاول مجددًا';
       });
     } catch (exception) {
       if (mounted)
@@ -151,29 +152,45 @@ class _AccountingWorkspaceScreenState extends State<AccountingWorkspaceScreen>
               onPressed: widget.onShowAudit,
               icon: const Icon(Icons.fact_check_outlined),
               label: const Text('سجل التدقيق'));
+          final periods = IconButton(
+              onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => const AccountingPeriodsDialog(),
+                  ).then((_) => _load()),
+              tooltip: 'الفترات المالية',
+              icon: const Icon(Icons.calendar_month_outlined));
           final accountManagement = OutlinedButton.icon(
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => AccountManagementScreen(repository: widget.repository))),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) =>
+                      AccountManagementScreen(repository: widget.repository))),
               icon: const Icon(Icons.account_tree_outlined),
               label: const Text('إدارة الحسابات'));
           final analyticalManagement = OutlinedButton.icon(
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => AnalyticalAccountsScreen(repository: widget.repository))),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) =>
+                      AnalyticalAccountsScreen(repository: widget.repository))),
               icon: const Icon(Icons.people_alt_outlined),
               label: const Text('الحسابات التحليلية'));
           if (constraints.maxWidth < 1024) {
             return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(children: [Expanded(child: heading), refresh]),
+                  Row(children: [Expanded(child: heading), periods, refresh]),
                   const SizedBox(height: 8),
-                  Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [receipt, payment, accountManagement, analyticalManagement, reports, audit]),
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    receipt,
+                    payment,
+                    accountManagement,
+                    analyticalManagement,
+                    reports,
+                    audit
+                  ]),
                 ]);
           }
           return Row(children: [
             Expanded(child: heading),
             refresh,
+            periods,
             receipt,
             const SizedBox(width: 8),
             payment,
@@ -377,9 +394,10 @@ class _AccountingWorkspaceScreenState extends State<AccountingWorkspaceScreen>
                     await chart.setActive(account, !account.active);
                   } catch (error) {
                     if (mounted) {
-                      final message = error.toString().contains('حسابات فرعية نشطة')
-                          ? 'لا يمكن إيقاف حساب له حسابات فرعية نشطة'
-                          : 'تعذر تحديث حالة الحساب. حاول مجددًا';
+                      final message =
+                          error.toString().contains('حسابات فرعية نشطة')
+                              ? 'لا يمكن إيقاف حساب له حسابات فرعية نشطة'
+                              : 'تعذر تحديث حالة الحساب. حاول مجددًا';
                       ScaffoldMessenger.of(context)
                           .showSnackBar(SnackBar(content: Text(message)));
                     }
@@ -453,8 +471,8 @@ class _AccountingWorkspaceScreenState extends State<AccountingWorkspaceScreen>
                   if (value == 'edit') _partyEditor(party);
                 },
                 itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'edit', child: Text('تعديل')),
-                ]))),
+                      PopupMenuItem(value: 'edit', child: Text('تعديل')),
+                    ]))),
         if (parties.isEmpty) const _Empty(text: 'لا توجد أطراف مسجلة بعد.')
       ]);
 

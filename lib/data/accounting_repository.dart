@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import '../core/accounting.dart';
+import 'accounting_authorization.dart';
 import '../core/connector_models.dart';
 import '../core/models.dart';
 import 'local_database.dart';
@@ -12,6 +13,9 @@ part 'accounting_repository/posting.dart';
 part 'accounting_repository/accounts.dart';
 part 'accounting_repository/reports.dart';
 part 'accounting_repository/integrations.dart';
+part 'accounting_repository/balances.dart';
+part 'accounting_repository/reversals.dart';
+part 'accounting_repository/numbering.dart';
 
 class AuditRecord {
   final int? id;

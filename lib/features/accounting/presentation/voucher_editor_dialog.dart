@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/accounting.dart';
 import '../../../core/user_facing_errors.dart';
+import '../../../data/accounting_authorization.dart';
 import '../../../data/accounting_repository.dart';
+import '../../../data/local_database.dart';
 import 'account_picker_fields.dart';
 
 class VoucherEditorDialog extends StatefulWidget {
@@ -32,12 +36,14 @@ class _VoucherEditorDialogState extends State<VoucherEditorDialog> {
   String debitCurrency = 'SAR';
   String creditCurrency = 'SAR';
   bool saving = false;
+  bool checkingAccess = true;
+  bool canPost = false;
+  bool numberEdited = false;
 
   @override
   void initState() {
     super.initState();
-    number.text =
-        '${widget.type.name.substring(0, 2).toUpperCase()}-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+    unawaited(_loadPostingAccessAndNumber());
     if (widget.accounts.length > 1) {
       debit = widget.accounts.first;
       credit = widget.accounts[1];
@@ -45,6 +51,25 @@ class _VoucherEditorDialogState extends State<VoucherEditorDialog> {
       creditCurrency = credit!.supportedCurrencies.first;
     }
     if (widget.parties.isNotEmpty) party = widget.parties.first;
+  }
+
+  Future<void> _loadPostingAccessAndNumber() async {
+    try {
+      final db = await LocalDatabase.instance.database;
+      final allowed = await AccountingAuthorization.instance
+          .can(db, AccountingPermission.postVouchers);
+      final generated = allowed
+          ? await widget.repository.nextVoucherNumber(widget.type)
+          : null;
+      if (!mounted) return;
+      setState(() {
+        canPost = allowed;
+        checkingAccess = false;
+        if (generated != null && !numberEdited) number.text = generated;
+      });
+    } catch (_) {
+      if (mounted) setState(() => checkingAccess = false);
+    }
   }
 
   @override
@@ -85,6 +110,7 @@ class _VoucherEditorDialogState extends State<VoucherEditorDialog> {
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
               TextField(
                   controller: number,
+                  onChanged: (_) => numberEdited = true,
                   decoration: const InputDecoration(labelText: 'رقم السند')),
               PartyPickerField(
                   label: 'بحث واختيار الطرف',
@@ -140,13 +166,18 @@ class _VoucherEditorDialogState extends State<VoucherEditorDialog> {
                       const TextInputType.numberWithOptions(decimal: true),
                   decoration: const InputDecoration(
                       labelText: 'الإجمالي بالعملة الأساسية (SAR)')),
+              if (!checkingAccess && !canPost)
+                const Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Text('لا تملك صلاحية ترحيل القيود'),
+                ),
             ]))),
         actions: [
           TextButton(
               onPressed: saving ? null : () => Navigator.pop(context),
               child: const Text('إلغاء')),
           FilledButton(
-              onPressed: saving ? null : _save,
+              onPressed: saving || checkingAccess || !canPost ? null : _save,
               child: const Text('حفظ وترحيل')),
         ],
       );
@@ -214,7 +245,8 @@ class _VoucherEditorDialogState extends State<VoucherEditorDialog> {
       if (mounted) {
         setState(() => saving = false);
         _message(userFacingError(error,
-            fallback: 'تعذر ترحيل السند. راجع الحساب والعملة والمبلغ ثم حاول مجددًا'));
+            fallback:
+                'تعذر ترحيل السند. راجع الحساب والعملة والمبلغ ثم حاول مجددًا'));
       }
     }
   }

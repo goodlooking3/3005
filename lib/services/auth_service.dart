@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:local_auth/local_auth.dart';
@@ -14,9 +15,12 @@ class AuthService {
   static const _passwordKey = 'wasel_auth_password';
   static const _displayNameKey = 'wasel_auth_display_name';
   static const _rememberKey = 'wasel_auth_remember';
-  static const _hashPrefix = 'sha256:';
+  static const _hashPrefix = 'pbkdf2-sha256:';
+  static const _legacyHashPrefix = 'sha256:';
+  static const _pbkdf2Iterations = 150000;
   final LocalAuthentication _localAuth = LocalAuthentication();
   static final _hash = Sha256();
+  static final _secureRandom = Random.secure();
 
   Future<bool> hasAccount() async =>
       (await SharedPreferences.getInstance()).getBool(_configuredKey) ?? false;
@@ -134,18 +138,78 @@ class AuthService {
   ) async {
     final stored = prefs.getString(_passwordKey);
     if (stored == null) return false;
-    final hashed = await _passwordHash(password);
-    if (stored == hashed) return true;
+    if (stored.startsWith(_hashPrefix)) {
+      return _verifyPbkdf2(stored, password);
+    }
+    if (stored.startsWith(_legacyHashPrefix)) {
+      try {
+        final expected = base64Url.decode(
+          base64Url.normalize(stored.substring(_legacyHashPrefix.length)),
+        );
+        final actual = (await _hash.hash(utf8.encode(password))).bytes;
+        if (!_constantTimeEquals(actual, expected)) return false;
+        await prefs.setString(_passwordKey, await _passwordHash(password));
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
     if (stored == password) {
-      await prefs.setString(_passwordKey, hashed);
+      await prefs.setString(_passwordKey, await _passwordHash(password));
       return true;
     }
     return false;
   }
 
   Future<String> _passwordHash(String password) async {
-    final digest = await _hash.hash(utf8.encode(password));
-    return '$_hashPrefix${base64UrlEncode(digest.bytes)}';
+    final salt = List<int>.generate(16, (_) => _secureRandom.nextInt(256));
+    final algorithm = Pbkdf2(
+      macAlgorithm: Hmac.sha256(),
+      iterations: _pbkdf2Iterations,
+      bits: 256,
+    );
+    final derived = await algorithm.deriveKey(
+      secretKey: SecretKey(utf8.encode(password)),
+      nonce: salt,
+    );
+    return '$_hashPrefix$_pbkdf2Iterations:${base64UrlEncode(salt)}:${base64UrlEncode(await derived.extractBytes())}';
+  }
+
+  Future<bool> _verifyPbkdf2(String stored, String password) async {
+    try {
+      final parts = stored.substring(_hashPrefix.length).split(':');
+      if (parts.length != 3) return false;
+      final iterations = int.parse(parts[0]);
+      final salt = base64Url.decode(base64Url.normalize(parts[1]));
+      final expected = base64Url.decode(base64Url.normalize(parts[2]));
+      if (iterations < 100000 ||
+          iterations > 500000 ||
+          salt.length < 16 ||
+          expected.length != 32) {
+        return false;
+      }
+      final algorithm = Pbkdf2(
+        macAlgorithm: Hmac.sha256(),
+        iterations: iterations,
+        bits: expected.length * 8,
+      );
+      final derived = await algorithm.deriveKey(
+        secretKey: SecretKey(utf8.encode(password)),
+        nonce: salt,
+      );
+      return _constantTimeEquals(await derived.extractBytes(), expected);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool _constantTimeEquals(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    var difference = 0;
+    for (var index = 0; index < a.length; index++) {
+      difference |= a[index] ^ b[index];
+    }
+    return difference == 0;
   }
 
   Future<bool> canUseBiometrics() async {

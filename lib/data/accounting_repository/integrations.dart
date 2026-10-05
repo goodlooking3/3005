@@ -224,7 +224,10 @@ extension AccountingRepositoryIntegrations on AccountingRepository {
 
   Future<List<JournalEntry>> journalEntries({String query = ''}) async {
     final trimmed = query.trim();
-    final rows = await (await _db).query(
+    final db = await _db;
+    await AccountingAuthorization.instance
+        .requireRead(db, AccountingPermission.viewLedger);
+    final rows = await db.query(
       'journal_entries',
       where: trimmed.isEmpty ? null : '(number LIKE ? OR description LIKE ?)',
       whereArgs: trimmed.isEmpty ? null : ['%$trimmed%', '%$trimmed%'],

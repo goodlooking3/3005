@@ -231,5 +231,25 @@ void main() {
     await openChart(tester, repository);
     await enterAccount(tester, '1700', 'محاولة تكرار');
     expect(find.textContaining('رقم الحساب مستخدم مسبقًا'), findsOneWidget);
+    await tester.tap(find.text('إلغاء'));
+    await tester.pump();
+    await tester.runAsync(() async {
+      final db = await LocalDatabase.instance.database;
+      await db.update('user_profile', {'role': 'viewer'},
+          where: 'id = ?', whereArgs: [1]);
+    });
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pump();
+    final periodsButton = find.byTooltip('الفترات المالية');
+    await tester.ensureVisible(periodsButton);
+    await tester.tap(periodsButton);
+    await tester.pump();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(seconds: 2)),
+    );
+    await tester.pump();
+    expect(find.textContaining('لا توجد فترات معرفة'), findsOneWidget);
+    expect(find.byTooltip('إنشاء فترة مالية'), findsNothing);
   });
 }

@@ -48,22 +48,28 @@ void main() {
           accountId: customerAccountId,
           partyId: partyId,
           accountName: 'عملاء نقديون',
-          debit: 100,
+          credit: 100,
           currency: 'SAR',
           partyName: 'عميل مرتبط',
         ),
         VoucherLine(
           accountId: cashAccountId,
           accountName: 'الصندوق',
-          credit: 100,
+          debit: 100,
           currency: 'SAR',
         ),
       ],
     ));
 
     final db = await LocalDatabase.instance.database;
-    expect((await db.query('voucher_lines', where: 'party_id IS NOT NULL')).single['party_id'], partyId);
-    expect((await db.query('journal_lines', where: 'party_id IS NOT NULL')).single['party_id'], partyId);
+    expect(
+        (await db.query('voucher_lines', where: 'party_id IS NOT NULL'))
+            .single['party_id'],
+        partyId);
+    expect(
+        (await db.query('journal_lines', where: 'party_id IS NOT NULL'))
+            .single['party_id'],
+        partyId);
   });
 
   test('new party requires a matching active analytical account', () async {

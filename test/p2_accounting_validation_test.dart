@@ -12,7 +12,8 @@ void main() {
 
   setUp(() => LocalDatabase.instance.resetForTests());
 
-  test('rejects a voucher with a missing account without partial rows', () async {
+  test('rejects a voucher with a missing account without partial rows',
+      () async {
     final repository = AccountingRepository();
     final voucher = Voucher(
       number: 'P2-MISSING',
@@ -51,7 +52,8 @@ void main() {
       date: DateTime(2026, 9, 22),
       lines: [
         VoucherLine(accountId: accountId, accountName: 'حساب واحد', debit: 100),
-        VoucherLine(accountId: accountId, accountName: 'حساب واحد', credit: 100),
+        VoucherLine(
+            accountId: accountId, accountName: 'حساب واحد', credit: 100),
       ],
     );
 
@@ -112,6 +114,40 @@ void main() {
     await expectLater(repository.insertVoucher(voucher), throwsStateError);
   });
 
+  test('rejects inactive accounts without leaving voucher or ledger rows',
+      () async {
+    final repository = AccountingRepository();
+    final inactiveId = await repository.upsertAccount(
+      const Account(
+        code: 'P2-INACTIVE',
+        name: 'حساب متوقف',
+        type: 'أصل',
+        active: false,
+      ),
+    );
+    final creditId = await repository.upsertAccount(
+      const Account(code: 'P2-INACTIVE-C', name: 'دائن نشط', type: 'إيراد'),
+    );
+    final voucher = Voucher(
+      number: 'P2-INACTIVE-ENTRY',
+      type: VoucherType.journal,
+      description: 'منع الحساب المتوقف',
+      amount: 12,
+      currency: 'SAR',
+      date: DateTime(2026, 9, 22),
+      lines: [
+        VoucherLine(
+            accountId: inactiveId, accountName: 'حساب متوقف', debit: 12),
+        VoucherLine(accountId: creditId, accountName: 'دائن نشط', credit: 12),
+      ],
+    );
+
+    await expectLater(repository.insertVoucher(voucher), throwsStateError);
+    final db = await LocalDatabase.instance.database;
+    expect(await db.query('vouchers'), isEmpty);
+    expect(await db.query('journal_entries'), isEmpty);
+  });
+
   test('rejects duplicate voucher numbers atomically', () async {
     final repository = AccountingRepository();
     final debitId = await repository.upsertAccount(
@@ -128,15 +164,20 @@ void main() {
           currency: 'SAR',
           date: DateTime(2026, 9, 22),
           lines: [
-            VoucherLine(accountId: debitId, accountName: 'مدين مكرر', debit: 20),
-            VoucherLine(accountId: creditId, accountName: 'دائن مكرر', credit: 20),
+            VoucherLine(
+                accountId: debitId, accountName: 'مدين مكرر', debit: 20),
+            VoucherLine(
+                accountId: creditId, accountName: 'دائن مكرر', credit: 20),
           ],
         );
 
     await repository.insertVoucher(build());
     await expectLater(repository.insertVoucher(build()), throwsStateError);
     final db = await LocalDatabase.instance.database;
-    expect(await db.query('vouchers', where: 'number = ?', whereArgs: ['P2-DUPLICATE']), hasLength(1));
+    expect(
+        await db.query('vouchers',
+            where: 'number = ?', whereArgs: ['P2-DUPLICATE']),
+        hasLength(1));
   });
 
   test('rejects an account cycle across multiple parents', () async {
@@ -145,7 +186,8 @@ void main() {
       const Account(code: 'P2-CYCLE-A', name: 'جذر دورة', type: 'أصل'),
     );
     final childId = await repository.upsertAccount(
-      Account(code: 'P2-CYCLE-B', name: 'ابن دورة', type: 'أصل', parentId: rootId),
+      Account(
+          code: 'P2-CYCLE-B', name: 'ابن دورة', type: 'أصل', parentId: rootId),
     );
 
     await expectLater(

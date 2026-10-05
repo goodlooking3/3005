@@ -13,6 +13,8 @@ extension AccountingRepositoryPosting on AccountingRepository {
     required String paymentAccount,
     required String customerName,
   }) async {
+    await AccountingAuthorization.instance
+        .require(txn, AccountingPermission.postVouchers);
     if (!amount.isFinite ||
         amount <= 0 ||
         number.trim().isEmpty ||
@@ -108,6 +110,8 @@ extension AccountingRepositoryPosting on AccountingRepository {
     required String customerName,
     required String source,
   }) async {
+    await AccountingAuthorization.instance
+        .require(txn, AccountingPermission.reverseVouchers);
     if (!amount.isFinite || amount <= 0 || number.trim().isEmpty) {
       throw ArgumentError('بيانات القيد العكسي غير صالحة');
     }
@@ -195,10 +199,12 @@ extension AccountingRepositoryPosting on AccountingRepository {
     Transaction txn,
     Voucher voucher,
   ) async {
+    await AccountingAuthorization.instance
+        .require(txn, AccountingPermission.postVouchers);
     if (!voucher.amount.isFinite || voucher.amount <= 0) {
       throw ArgumentError('Voucher amount must be positive');
     }
-    if (voucher.lines.isEmpty || !voucher.lines.every((line) => line.isValid)) {
+    if (!voucher.isBalanced) {
       throw ArgumentError('Voucher lines must be balanced');
     }
     if (voucher.number.trim().isEmpty ||
@@ -211,7 +217,7 @@ extension AccountingRepositoryPosting on AccountingRepository {
     final duplicate = await txn.query(
       'vouchers',
       columns: ['id'],
-      where: 'number = ?',
+      where: 'number = ? COLLATE NOCASE',
       whereArgs: [voucher.number.trim()],
       limit: 1,
     );
@@ -361,12 +367,26 @@ extension AccountingRepositoryPosting on AccountingRepository {
     await _validateAccountIds(txn, accountIds.whereType<int>().toList());
     final accountRows = await txn.query(
       'accounts',
-      columns: ['id', 'is_group'],
+      columns: ['id', 'is_group', 'kind'],
       where: 'id IN (${List.filled(accountIds.length, '?').join(',')})',
       whereArgs: accountIds.whereType<int>().toList(),
     );
     if (accountRows.any((row) => (row['is_group'] as int? ?? 0) == 1)) {
       throw StateError('لا يمكن ترحيل سند إلى حساب تجميعي');
+    }
+    final kinds = {
+      for (final row in accountRows) row['id'] as int: row['kind'] as String,
+    };
+    final debitCashOrBank = voucher.lines.any((line) =>
+        line.debit > 0 && {'cash', 'bank'}.contains(kinds[line.accountId]));
+    final creditCashOrBank = voucher.lines.any((line) =>
+        line.credit > 0 && {'cash', 'bank'}.contains(kinds[line.accountId]));
+    if (voucher.type == VoucherType.receipt && !debitCashOrBank) {
+      throw StateError('سند القبض يجب أن يخصم حساب صندوق أو بنك');
+    }
+    if (voucher.type == VoucherType.payment && !creditCashOrBank) {
+      throw StateError(
+          'سند الصرف يجب أن يضيف حساب صندوق أو بنك إلى الطرف الدائن');
     }
     final uniqueIds = accountIds.whereType<int>().toSet();
     if (uniqueIds.length != accountIds.length) {

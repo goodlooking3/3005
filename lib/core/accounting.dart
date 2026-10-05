@@ -1,5 +1,7 @@
 enum VoucherType { receipt, payment, journal }
 
+const double accountingTolerance = 0.000001;
+
 enum AccountKind {
   asset,
   liability,
@@ -42,7 +44,8 @@ class Account {
     this.active = true,
   });
 
-  List<String> get supportedCurrencies => currencies.isEmpty ? [currency] : currencies;
+  List<String> get supportedCurrencies =>
+      currencies.isEmpty ? [currency] : currencies;
 
   Account withCurrencies(List<String> values) => Account(
         id: id,
@@ -59,6 +62,56 @@ class Account {
         balance: balance,
         active: active,
       );
+}
+
+class AccountBalance {
+  final int accountId;
+  final String accountCode;
+  final String accountName;
+  final AccountKind kind;
+  final bool isGroup;
+  final String currency;
+  final double openingBalance;
+  final double debitTotal;
+  final double creditTotal;
+  final double? baseDebitTotal;
+  final double? baseCreditTotal;
+  final double? openingBalanceInBaseCurrency;
+
+  const AccountBalance({
+    required this.accountId,
+    required this.accountCode,
+    required this.accountName,
+    required this.kind,
+    required this.isGroup,
+    required this.currency,
+    required this.openingBalance,
+    required this.debitTotal,
+    required this.creditTotal,
+    required this.baseDebitTotal,
+    required this.baseCreditTotal,
+    required this.openingBalanceInBaseCurrency,
+  });
+
+  bool get debitNormal => const {
+        AccountKind.asset,
+        AccountKind.cash,
+        AccountKind.bank,
+        AccountKind.expense,
+        AccountKind.customer,
+      }.contains(kind);
+
+  double get balance =>
+      openingBalance +
+      (debitNormal ? debitTotal - creditTotal : creditTotal - debitTotal);
+
+  double? get baseBalance {
+    final opening = openingBalanceInBaseCurrency;
+    final debits = baseDebitTotal;
+    final credits = baseCreditTotal;
+    if (opening == null || debits == null || credits == null) return null;
+    return opening + (debitNormal ? debits - credits : credits - debits);
+  }
 }
 
 class VoucherLine {
@@ -115,10 +168,20 @@ class Voucher {
     this.creditAccountId,
     this.lines = const [],
   });
-  bool get isBalanced =>
-      lines.isEmpty ||
-      lines.fold<double>(0, (sum, line) => sum + line.debit) ==
-          lines.fold<double>(0, (sum, line) => sum + line.credit);
+  bool get isBalanced {
+    if (lines.isEmpty || !lines.every((line) => line.isValid)) return false;
+    final currencies = lines
+        .map((line) => (line.currency ?? currency).trim().toUpperCase())
+        .toSet();
+    // Cross-currency balance is determined only after each line is valued in
+    // the base currency by the repository's central currency policy.
+    if (currencies.length > 1) return true;
+    final debit = lines.fold<double>(0, (sum, line) => sum + line.debit);
+    final credit = lines.fold<double>(0, (sum, line) => sum + line.credit);
+    return debit.isFinite &&
+        credit.isFinite &&
+        (debit - credit).abs() <= accountingTolerance;
+  }
 }
 
 class Party {

@@ -3,6 +3,8 @@ part of '../accounting_repository.dart';
 extension AccountingRepositoryAccounts on AccountingRepository {
   Future<List<Voucher>> vouchers() async {
     final db = await _db;
+    await AccountingAuthorization.instance
+        .requireRead(db, AccountingPermission.viewLedger);
     final rows = await db.query('vouchers', orderBy: 'date DESC');
     return Future.wait(rows.map((row) async {
       final lineRows = await db.query(
@@ -43,6 +45,8 @@ extension AccountingRepositoryAccounts on AccountingRepository {
 
   Future<int> upsertAccount(Account account) => LocalDatabase.instance.write(
         (db) async {
+          await AccountingAuthorization.instance
+              .require(db, AccountingPermission.manageAccounts);
           final code = account.code.trim();
           if (code.isEmpty || account.name.trim().isEmpty) {
             throw ArgumentError('رقم واسم الحساب مطلوبان');
@@ -63,8 +67,9 @@ extension AccountingRepositoryAccounts on AccountingRepository {
               whereArgs: [account.parentId],
               limit: 1,
             );
-            if (parent.isEmpty)
+            if (parent.isEmpty) {
               throw StateError('الحساب الأب غير موجود أو متوقف');
+            }
             await _ensureNoAccountCycle(
               db,
               accountId: account.id,
@@ -72,8 +77,9 @@ extension AccountingRepositoryAccounts on AccountingRepository {
             );
           }
           final primaryCurrency = account.currency.trim().toUpperCase();
-          if (primaryCurrency.isEmpty)
+          if (primaryCurrency.isEmpty) {
             throw ArgumentError('عملة الحساب مطلوبة');
+          }
           final supported = <String>{
             primaryCurrency,
             ...account.supportedCurrencies
@@ -88,8 +94,9 @@ extension AccountingRepositoryAccounts on AccountingRepository {
               whereArgs: [currency],
               limit: 1,
             );
-            if (active.isEmpty)
+            if (active.isEmpty) {
               throw StateError('العملة $currency غير نشطة أو غير معروفة');
+            }
           }
           final values = {
             'code': code,
@@ -161,7 +168,10 @@ extension AccountingRepositoryAccounts on AccountingRepository {
   }
 
   Future<List<Account>> accounts({bool includeInactive = false}) async {
-    final rows = await (await _db).query(
+    final db = await _db;
+    await AccountingAuthorization.instance
+        .requireRead(db, AccountingPermission.viewLedger);
+    final rows = await db.query(
       'accounts',
       where: includeInactive ? null : 'active = 1',
       orderBy: 'code ASC',
@@ -210,7 +220,10 @@ extension AccountingRepositoryAccounts on AccountingRepository {
   }
 
   Future<int?> accountIdByName(String name) async {
-    final rows = await (await _db).query(
+    final db = await _db;
+    await AccountingAuthorization.instance
+        .requireRead(db, AccountingPermission.viewLedger);
+    final rows = await db.query(
       'accounts',
       columns: ['id'],
       where: 'name = ?',
@@ -221,8 +234,15 @@ extension AccountingRepositoryAccounts on AccountingRepository {
   }
 
   Future<Account?> accountByCode(String code) async {
-    final rows = await (await _db)
-        .query('accounts', where: 'code = ?', whereArgs: [code], limit: 1);
+    final db = await _db;
+    await AccountingAuthorization.instance
+        .requireRead(db, AccountingPermission.viewLedger);
+    final rows = await db.query(
+      'accounts',
+      where: 'code = ?',
+      whereArgs: [code],
+      limit: 1,
+    );
     if (rows.isEmpty) return null;
     final account = _accountFromRow(rows.first);
     final currencies = await _accountCurrencies(account.id!);
@@ -253,14 +273,17 @@ extension AccountingRepositoryAccounts on AccountingRepository {
 
   Future<void> setAccountActive(int id, bool active) =>
       LocalDatabase.instance.write((db) async {
+        await AccountingAuthorization.instance
+            .require(db, AccountingPermission.manageAccounts);
         if (!active) {
           final children = await db.query('accounts',
               columns: ['id'],
               where: 'parent_id = ? AND active = 1',
               whereArgs: [id],
               limit: 1);
-          if (children.isNotEmpty)
+          if (children.isNotEmpty) {
             throw StateError('لا يمكن إيقاف حساب له حسابات فرعية نشطة');
+          }
         }
         await db.update('accounts', {'active': active ? 1 : 0},
             where: 'id = ?', whereArgs: [id]);
@@ -270,6 +293,8 @@ extension AccountingRepositoryAccounts on AccountingRepository {
 
   Future<int> upsertParty(Party party) => LocalDatabase.instance.write(
         (db) async {
+          await AccountingAuthorization.instance
+              .require(db, AccountingPermission.manageParties);
           final name = party.name.trim();
           final type = party.type.trim().toLowerCase();
           final currency = party.currency.trim().toUpperCase();
@@ -348,7 +373,10 @@ extension AccountingRepositoryAccounts on AccountingRepository {
         },
       );
   Future<List<Party>> parties({String? type}) async {
-    final rows = await (await _db).query(
+    final db = await _db;
+    await AccountingAuthorization.instance
+        .requireRead(db, AccountingPermission.viewLedger);
+    final rows = await db.query(
       'parties',
       where: type == null ? 'active = 1' : 'active = 1 AND type = ?',
       whereArgs: type == null ? null : [type],
@@ -376,6 +404,8 @@ extension AccountingRepositoryAccounts on AccountingRepository {
 
   Future<void> saveCompany(CompanyProfile profile) =>
       LocalDatabase.instance.write((db) async {
+        await AccountingAuthorization.instance
+            .require(db, AccountingPermission.manageCompanySettings);
         await db.insert(
             'company_profile',
             {
@@ -391,7 +421,10 @@ extension AccountingRepositoryAccounts on AccountingRepository {
             conflictAlgorithm: ConflictAlgorithm.replace);
       });
   Future<CompanyProfile?> company() async {
-    final rows = await (await _db).query('company_profile', limit: 1);
+    final db = await _db;
+    await AccountingAuthorization.instance
+        .requireRead(db, AccountingPermission.viewLedger);
+    final rows = await db.query('company_profile', limit: 1);
     if (rows.isEmpty) return null;
     final r = rows.first;
     return CompanyProfile(
