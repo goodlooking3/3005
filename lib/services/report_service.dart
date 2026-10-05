@@ -3,6 +3,11 @@ import 'package:sqflite/sqflite.dart';
 import '../data/accounting_authorization.dart';
 import '../data/currency_policy.dart';
 import '../data/local_database.dart';
+import '../data/accounting_repository.dart';
+import '../core/accounting.dart';
+
+part 'report_service_balance_sheet.dart';
+part 'report_service_party.dart';
 
 class LedgerRow {
   final String date;
@@ -171,12 +176,12 @@ class ReportService {
     final where =
         filter.where.isEmpty ? '' : ' AND ${filter.where.substring(6)}';
     final revenue = await db.rawQuery(
-      "SELECT COALESCE(SUM(CASE WHEN $credit > 0 THEN $credit ELSE 0 END),0) total "
+      "SELECT COALESCE(SUM($credit - $debit),0) total "
       "$join WHERE a.kind = 'revenue'$where",
       filter.args,
     );
     final expenses = await db.rawQuery(
-      "SELECT COALESCE(SUM(CASE WHEN $debit > 0 THEN $debit ELSE 0 END),0) total "
+      "SELECT COALESCE(SUM($debit - $credit),0) total "
       "$join WHERE a.kind = 'expense'$where",
       filter.args,
     );
