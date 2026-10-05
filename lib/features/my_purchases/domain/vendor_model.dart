@@ -94,6 +94,49 @@ class PurchaseAdjustments {
     this.recoverableTax = 0,
     this.nonRecoverableTax = 0,
   });
+
+  static PurchaseAdjustments? tryParse({
+    required String shipping,
+    required String discount,
+    required String recoverableTax,
+    required String nonRecoverableTax,
+    required double subtotal,
+  }) {
+    double? parse(String value) =>
+        value.trim().isEmpty ? 0 : double.tryParse(value.trim());
+
+    final parsedShipping = parse(shipping);
+    final parsedDiscount = parse(discount);
+    final parsedRecoverableTax = parse(recoverableTax);
+    final parsedNonRecoverableTax = parse(nonRecoverableTax);
+    if (!subtotal.isFinite ||
+        subtotal <= 0 ||
+        parsedShipping == null ||
+        parsedDiscount == null ||
+        parsedRecoverableTax == null ||
+        parsedNonRecoverableTax == null) {
+      return null;
+    }
+    if ([
+          parsedShipping,
+          parsedDiscount,
+          parsedRecoverableTax,
+          parsedNonRecoverableTax,
+        ].any((value) => !value.isFinite || value < 0) ||
+        parsedDiscount > subtotal) {
+      return null;
+    }
+    final result = PurchaseAdjustments(
+      shipping: parsedShipping,
+      discount: parsedDiscount,
+      recoverableTax: parsedRecoverableTax,
+      nonRecoverableTax: parsedNonRecoverableTax,
+    );
+    final total =
+        subtotal - result.discount + result.shipping + result.totalTax;
+    return total.isFinite && total > 0 ? result : null;
+  }
+
   double get totalTax => recoverableTax + nonRecoverableTax;
   bool get isZero => shipping == 0 && discount == 0 && totalTax == 0;
 }
@@ -108,9 +151,16 @@ class PurchaseCartLine {
 class PurchaseCart {
   final List<PurchaseCartLine> lines;
   final PurchaseAdjustments adjustments;
-  const PurchaseCart(this.lines, {this.adjustments = const PurchaseAdjustments()});
+  const PurchaseCart(
+    this.lines, {
+    this.adjustments = const PurchaseAdjustments(),
+  });
   double get subtotal => lines.fold(0, (sum, line) => sum + line.total);
-  double get total => subtotal - adjustments.discount + adjustments.shipping + adjustments.totalTax;
+  double get total =>
+      subtotal -
+      adjustments.discount +
+      adjustments.shipping +
+      adjustments.totalTax;
   String get currency => lines.isEmpty ? 'SAR' : lines.first.product.currency;
 }
 
@@ -129,11 +179,23 @@ class VendorSeedData {
 class ProductSeedData {
   static const products = [
     MarketplaceProduct(
-        vendorId: 1, name: 'سلة مواد غذائية', category: 'تجزئة', price: 85),
+      vendorId: 1,
+      name: 'سلة مواد غذائية',
+      category: 'تجزئة',
+      price: 85,
+    ),
     MarketplaceProduct(
-        vendorId: 1, name: 'منظفات منزلية', category: 'تجزئة', price: 32),
+      vendorId: 1,
+      name: 'منظفات منزلية',
+      category: 'تجزئة',
+      price: 32,
+    ),
     MarketplaceProduct(
-        vendorId: 2, name: 'كرتون مياه', category: 'مياه', price: 18),
+      vendorId: 2,
+      name: 'كرتون مياه',
+      category: 'مياه',
+      price: 18,
+    ),
   ];
 }
 
