@@ -1,8 +1,15 @@
 enum WalletTransactionType { transfer, receipt, purchase, billPayment, topUp }
 
 const walletTransactionStatuses = {
-  'draft', 'review', 'approved', 'sent', 'confirmed', 'failed', 'pending',
-  'needs_reconciliation', 'posted',
+  'draft',
+  'review',
+  'approved',
+  'sent',
+  'confirmed',
+  'failed',
+  'pending',
+  'needs_reconciliation',
+  'posted',
 };
 
 class WalletTransaction {
@@ -54,7 +61,8 @@ class WalletTransaction {
     this.journalEntryId,
   });
 
-  factory WalletTransaction.fromMap(Map<String, Object?> row) => WalletTransaction(
+  factory WalletTransaction.fromMap(Map<String, Object?> row) =>
+      WalletTransaction(
         id: row['id'] as int?,
         status: row['status'] as String? ?? 'posted',
         fromWalletAccountId: row['from_wallet_account_id'] as int?,
@@ -91,7 +99,8 @@ class WalletTransaction {
     String? status,
     String? sourceReference,
     String? rawPayload,
-  }) => WalletTransaction(
+  }) =>
+      WalletTransaction(
         id: id,
         status: status ?? this.status,
         fromWalletAccountId: fromWalletAccountId ?? this.fromWalletAccountId,
@@ -115,6 +124,30 @@ class WalletTransaction {
         relatedEntityId: relatedEntityId,
         journalEntryId: journalEntryId ?? this.journalEntryId,
       );
+
+  Map<String, Object?> toMap() => {
+        'from_wallet_account_id': fromWalletAccountId,
+        'to_wallet_account_id': toWalletAccountId,
+        'from_account': fromAccount,
+        'to_account': toAccount,
+        'type': type.name,
+        'amount': amount,
+        'currency': currency,
+        'base_amount': baseAmount,
+        'base_currency': baseCurrency,
+        'exchange_rate': exchangeRate,
+        'fee_amount': feeAmount,
+        'fee_currency': feeCurrency,
+        'note': note,
+        'date': date.toIso8601String(),
+        'reference': reference,
+        'source_reference': sourceReference,
+        'raw_payload': rawPayload,
+        'related_module': relatedModule,
+        'related_entity_id': relatedEntityId,
+        'journal_entry_id': journalEntryId,
+        'status': status,
+      };
 }
 
 class WalletTransactionFilter {

@@ -137,12 +137,61 @@ extension AccountingRepositoryIntegrations on AccountingRepository {
     required int voucherId,
   }) =>
       LocalDatabase.instance.write((db) async {
-        await db.update(
-          'bank_transactions',
-          {'status': 'posted', 'posted_voucher_id': voucherId},
-          where: 'id = ? AND status = ?',
-          whereArgs: [id, 'imported'],
-        );
+        await db.transaction((txn) async {
+          final rows = await txn.query(
+            'bank_transactions',
+            columns: ['status', 'posted_voucher_id'],
+            where: 'id = ?',
+            whereArgs: [id],
+            limit: 1,
+          );
+          if (rows.isEmpty) throw StateError('حركة كشف البنك غير موجودة');
+          if (rows.single['status'] == 'posted' &&
+              rows.single['posted_voucher_id'] == voucherId) return;
+          final changed = await txn.update(
+            'bank_transactions',
+            {'status': 'posted', 'posted_voucher_id': voucherId},
+            where: 'id = ? AND status = ?',
+            whereArgs: [id, 'imported'],
+          );
+          if (changed != 1) throw StateError('تعذر تحديث حالة حركة البنك');
+        });
+      });
+
+  Future<int> postBankSandboxTransaction({
+    required int id,
+    required Voucher voucher,
+  }) =>
+      LocalDatabase.instance.write((db) async {
+        return db.transaction((txn) async {
+          final rows = await txn.query(
+            'bank_transactions',
+            columns: ['status', 'posted_voucher_id'],
+            where: 'id = ?',
+            whereArgs: [id],
+            limit: 1,
+          );
+          if (rows.isEmpty) throw StateError('حركة كشف البنك غير موجودة');
+          if (rows.single['status'] == 'posted') {
+            final existingId = rows.single['posted_voucher_id'] as int?;
+            if (existingId == null) {
+              throw StateError('حركة البنك مرّحلة بلا مرجع قيد');
+            }
+            return existingId;
+          }
+          if (rows.single['status'] != 'imported') {
+            throw StateError('حالة حركة البنك لا تسمح بالترحيل');
+          }
+          final voucherId = await insertVoucherInTransaction(txn, voucher);
+          final changed = await txn.update(
+            'bank_transactions',
+            {'status': 'posted', 'posted_voucher_id': voucherId},
+            where: 'id = ? AND status = ?',
+            whereArgs: [id, 'imported'],
+          );
+          if (changed != 1) throw StateError('تعذر ربط قيد كشف البنك');
+          return voucherId;
+        });
       });
 
   Future<List<ConnectorSettings>> connectors() async {

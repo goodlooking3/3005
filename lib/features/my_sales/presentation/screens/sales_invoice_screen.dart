@@ -28,6 +28,7 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
   String currency = 'SAR';
   int? cashAccountId;
   int? salesAccountId;
+  int? customerPartyId;
   bool loading = true;
   String? error;
 
@@ -36,7 +37,7 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
     super.initState();
     _load();
     search.addListener(() => setState(() {}));
-    customer.addListener(() => setState(() {}));
+    customer.addListener(_customerChanged);
   }
 
   @override
@@ -44,6 +45,15 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
     search.dispose();
     customer.dispose();
     super.dispose();
+  }
+
+  void _customerChanged() {
+    final selected = parties.where((party) => party.id == customerPartyId);
+    if (selected.isEmpty ||
+        selected.first.name.trim() != customer.text.trim()) {
+      customerPartyId = null;
+    }
+    if (mounted) setState(() {});
   }
 
   Future<void> _load() async {
@@ -65,7 +75,8 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
           accounts = loadedAccounts;
           parties = loadedParties;
           currencyOptions = const [];
-          error = 'لا توجد عملات نشطة لإصدار الفاتورة. فعّل عملة واحدة على الأقل ثم أعد المحاولة.';
+          error =
+              'لا توجد عملات نشطة لإصدار الفاتورة. فعّل عملة واحدة على الأقل ثم أعد المحاولة.';
           loading = false;
         });
         return;
@@ -107,7 +118,8 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
     for (final account in accounts) {
       if (account.active &&
           !account.isGroup &&
-          (account.kind == first || (second != null && account.kind == second)) &&
+          (account.kind == first ||
+              (second != null && account.kind == second)) &&
           _supportsCurrency(account, currency)) {
         return account;
       }
@@ -125,6 +137,7 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
       return sameCurrency && matchesSearch;
     }).toList();
   }
+
   double get cartTotal => cart.fold<double>(
       0, (total, item) => total + _quantity(item) * item.salePrice);
   void _setCurrency(String value) {
@@ -166,7 +179,11 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
     final term = customer.text.trim().toLowerCase();
     if (term.isEmpty) return const [];
     return parties
-        .where((party) => party.name.toLowerCase().contains(term))
+        .where((party) =>
+            party.id != null &&
+            party.type == 'customer' &&
+            party.active &&
+            party.name.toLowerCase().contains(term))
         .take(5)
         .toList(growable: false);
   }
@@ -197,12 +214,11 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
   }
 
   Future<void> _post() async {
-    if (customer.text.trim().isEmpty ||
+    if (customerPartyId == null ||
         cart.isEmpty ||
         cashAccountId == null ||
         salesAccountId == null) {
-      setState(
-          () => error = 'أكمل العميل والمنتجات وحساب التحصيل وحساب المبيعات');
+      setState(() => error = 'اختر عميلاً نشطاً ثم أكمل المنتجات والحسابات');
       return;
     }
     final lines = cart
@@ -222,6 +238,7 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
     try {
       await SalesEngine().completeSale(
         invoice: SalesInvoice(
+          partyId: customerPartyId!,
           number: invoiceNumber,
           customerName: customer.text.trim(),
           paymentAccount:
@@ -237,7 +254,8 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
     } catch (_) {
       if (mounted)
         setState(() {
-          error = 'تعذر ترحيل الفاتورة. تحقق من الحساب والعملة والكمية ثم حاول مجددًا';
+          error =
+              'تعذر ترحيل الفاتورة. تحقق من الحساب والعملة والكمية ثم حاول مجددًا';
           loading = false;
         });
     }
@@ -280,14 +298,13 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
             (a.kind == AccountKind.cash || a.kind == AccountKind.bank) &&
             _supportsCurrency(a, currency))
         .toList();
-    final revenueAccounts =
-        accounts
-            .where((a) =>
-                a.active &&
-                !a.isGroup &&
-                a.kind == AccountKind.revenue &&
-                _supportsCurrency(a, currency))
-            .toList();
+    final revenueAccounts = accounts
+        .where((a) =>
+            a.active &&
+            !a.isGroup &&
+            a.kind == AccountKind.revenue &&
+            _supportsCurrency(a, currency))
+        .toList();
     return Scaffold(
       appBar: AppBar(title: const Text('فاتورة بيع جديدة')),
       body: ListView(padding: const EdgeInsets.all(16), children: [
@@ -304,30 +321,33 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
               leading: const Icon(Icons.person_search),
               title: Text(party.name),
               subtitle: Text(party.type),
-              onTap: () => setState(() => customer.text = party.name),
+              onTap: () {
+                customerPartyId = party.id;
+                customer.text = party.name;
+              },
             )),
         const SizedBox(height: 8),
         LayoutBuilder(builder: (context, constraints) {
           final compact = constraints.maxWidth < 520;
           final fields = [
             DropdownButtonFormField<String>(
-                  key: const ValueKey('sale-currency'),
-                  value: currency,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'العملة'),
-                  items: currencyOptions
-                      .map((item) => DropdownMenuItem(
-                          value: item.code,
-                          child: Text('${item.code} — ${item.name}',
-                              maxLines: 1, overflow: TextOverflow.ellipsis)))
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) _setCurrency(value);
-                  }),
-        DropdownButtonFormField<int>(
-            key: const ValueKey('sale-cash-account'),
-            value: cashAccountId,
-            isExpanded: true,
+                key: const ValueKey('sale-currency'),
+                value: currency,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'العملة'),
+                items: currencyOptions
+                    .map((item) => DropdownMenuItem(
+                        value: item.code,
+                        child: Text('${item.code} — ${item.name}',
+                            maxLines: 1, overflow: TextOverflow.ellipsis)))
+                    .toList(),
+                onChanged: (value) {
+                  if (value != null) _setCurrency(value);
+                }),
+            DropdownButtonFormField<int>(
+                key: const ValueKey('sale-cash-account'),
+                value: cashAccountId,
+                isExpanded: true,
                 decoration: const InputDecoration(labelText: 'حساب التحصيل'),
                 items: cashAccounts
                     .map((a) => DropdownMenuItem(
@@ -338,8 +358,13 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
                 onChanged: (value) => setState(() => cashAccountId = value)),
           ];
           return compact
-              ? Column(children: [fields[0], const SizedBox(height: 8), fields[1]])
-              : Row(children: [Expanded(child: fields[0]), const SizedBox(width: 8), Expanded(child: fields[1])]);
+              ? Column(
+                  children: [fields[0], const SizedBox(height: 8), fields[1]])
+              : Row(children: [
+                  Expanded(child: fields[0]),
+                  const SizedBox(width: 8),
+                  Expanded(child: fields[1])
+                ]);
         }),
         const SizedBox(height: 8),
         DropdownButtonFormField<int>(
@@ -377,9 +402,8 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
             trailing: IconButton(
                 key: ValueKey('sale-add-${item.id}'),
                 tooltip: 'إضافة ${item.name} إلى الفاتورة',
-                onPressed: _quantity(item) >= item.quantity
-                    ? null
-                    : () => _add(item),
+                onPressed:
+                    _quantity(item) >= item.quantity ? null : () => _add(item),
                 icon: const Icon(Icons.add_shopping_cart)))),
         const Divider(),
         const Text('بنود الفاتورة',
@@ -396,12 +420,18 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
         Card(
           child: ListTile(
             title: const Text('إجمالي الفاتورة'),
-            trailing: Text('${cartTotal.toStringAsFixed(2)} $currency', style: const TextStyle(fontWeight: FontWeight.bold)),
+            trailing: Text('${cartTotal.toStringAsFixed(2)} $currency',
+                style: const TextStyle(fontWeight: FontWeight.bold)),
           ),
         ),
         FilledButton.icon(
             onPressed: loading ? null : _post,
-            icon: loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.receipt_long),
+            icon: loading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.receipt_long),
             label: Text(loading ? 'جارٍ الترحيل...' : 'ترحيل الفاتورة')),
       ]),
     );

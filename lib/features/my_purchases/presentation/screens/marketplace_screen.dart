@@ -8,6 +8,7 @@ import '../../domain/vendor_model.dart';
 import '../widgets/marketplace_product_list.dart';
 import '../widgets/purchase_adjustments_dialog.dart';
 import '../widgets/purchase_cart_dialog.dart';
+import '../widgets/vendor_party_link_dialog.dart';
 
 class MarketplaceScreen extends StatefulWidget {
   const MarketplaceScreen({super.key});
@@ -188,8 +189,18 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
         lines: cart,
       );
       if (adjustments == null) return;
+      final linkedVendor = await resolveVendorPartyLink(context, vendor!);
+      if (linkedVendor == null || !mounted) return;
+      if (linkedVendor.partyId != vendor!.partyId) {
+        setState(() {
+          vendor = linkedVendor;
+          vendors = vendors
+              .map((item) => item.id == linkedVendor.id ? linkedVendor : item)
+              .toList(growable: false);
+        });
+      }
       final receipt = await engine.checkout(
-        vendor: vendor!,
+        vendor: linkedVendor,
         cart: PurchaseCart(List.of(cart), adjustments: adjustments),
         walletName: 'محفظتي',
         walletAccount: 'محفظتي',

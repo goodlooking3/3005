@@ -77,7 +77,7 @@ class _ConnectorCenterScreenState extends State<ConnectorCenterScreen> {
             ButtonSegment(
               value: 0,
               icon: Icon(Icons.hub_outlined),
-                label: Text('الإضافات'),
+              label: Text('الإضافات'),
             ),
             ButtonSegment(
               value: 1,
@@ -100,12 +100,19 @@ class _ConnectorCenterScreenState extends State<ConnectorCenterScreen> {
     final normalized = query.trim().toLowerCase();
     final visible = controller.connectors.where((item) {
       final matchesCategory = category == 'الكل' || item.category == category;
-      final haystack = '${item.displayName} ${item.description} ${item.category}'.toLowerCase();
-      return matchesCategory && (normalized.isEmpty || haystack.contains(normalized));
+      final haystack =
+          '${item.displayName} ${item.description} ${item.category}'
+              .toLowerCase();
+      return matchesCategory &&
+          (normalized.isEmpty || haystack.contains(normalized));
     }).toList();
     final showFeatured = category == 'الكل' && normalized.isEmpty;
-    final featured = showFeatured ? visible.where((item) => item.featured).toList() : const <ConnectorItem>[];
-    final listItems = showFeatured ? visible.where((item) => !item.featured).toList() : visible;
+    final featured = showFeatured
+        ? visible.where((item) => item.featured).toList()
+        : const <ConnectorItem>[];
+    final listItems = showFeatured
+        ? visible.where((item) => !item.featured).toList()
+        : visible;
     return Column(
       children: [
         TextField(
@@ -132,21 +139,21 @@ class _ConnectorCenterScreenState extends State<ConnectorCenterScreen> {
           ),
         ),
         const SizedBox(height: 10),
-        if (featured.isNotEmpty)
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: Text('إضافات مقترحة', style: Theme.of(context).textTheme.titleMedium),
-          ),
-        if (featured.isNotEmpty)
-          ...featured.map(_connectorCard),
         Expanded(
-          child: listItems.isEmpty
-              ? const Center(child: Text('لا توجد إضافات مطابقة للبحث.'))
-              : ListView(
-                  children: listItems
-                      .map(_connectorCard)
-                      .toList(),
+          child: ListView(
+            children: [
+              if (featured.isNotEmpty)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Text('إضافات مقترحة',
+                      style: Theme.of(context).textTheme.titleMedium),
                 ),
+              ...featured.map(_connectorCard),
+              if (listItems.isEmpty)
+                const Center(child: Text('لا توجد إضافات مطابقة للبحث.')),
+              ...listItems.map(_connectorCard),
+            ],
+          ),
         ),
       ],
     );
@@ -155,11 +162,141 @@ class _ConnectorCenterScreenState extends State<ConnectorCenterScreen> {
   Widget _connectorCard(ConnectorItem item) => ConnectorCard(
         item: item,
         onSetup: () => widget.onSetup(item),
-        onSync: item.id == 'bank_sandbox' ? () => _runBankAction(widget.controller.syncBankSandbox, 'جلب الحركات') : null,
-        onPost: item.id == 'bank_sandbox' ? () => _runBankAction(widget.controller.postBankSandbox, 'الترحيل المحاسبي') : null,
+        onSync: item.id == 'bank_sandbox'
+            ? () =>
+                _runBankAction(widget.controller.syncBankSandbox, 'جلب الحركات')
+            : null,
+        onPost: item.id == 'bank_sandbox' ? _chooseBankCounterAccounts : null,
       );
 
-  Future<void> _runBankAction(Future<int> Function() action, String label) async {
+  Future<void> _chooseBankCounterAccounts() async {
+    try {
+      final rows = (await widget.controller.bankSandboxTransactions())
+          .where((row) => row['status'] == 'imported')
+          .toList(growable: false);
+      if (rows.isEmpty) {
+        await _runBankAction(
+          () => widget.controller.postBankSandbox(counterAccountIds: const {}),
+          'الترحيل المحاسبي',
+        );
+        return;
+      }
+      final accounts = await widget.controller.accountingAccounts();
+      final selected = <int, int>{};
+      if (!mounted) return;
+      final mappings = await showDialog<Map<int, int>>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            final complete =
+                rows.every((row) => selected.containsKey(row['id']! as int));
+            return AlertDialog(
+              title: const Text('مطابقة كشف البنك'),
+              content: SizedBox(
+                width: 520,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 480),
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      const Text(
+                        'اختر الحساب المقابل لكل حركة يدوياً؛ لن يُفترض حساب إيراد أو مصروف تلقائياً.',
+                      ),
+                      const SizedBox(height: 12),
+                      ...rows.map((row) {
+                        final id = row['id']! as int;
+                        final bankId = row['linked_account_id']! as int;
+                        final currency = row['currency']! as String;
+                        final direction = row['direction']! as String;
+                        final amount = (row['amount']! as num).toDouble();
+                        final eligible = accounts.where((account) =>
+                            account.id != null &&
+                            account.id != bankId &&
+                            account.active &&
+                            !account.isGroup &&
+                            account.supportedCurrencies.any((value) =>
+                                value.trim().toUpperCase() ==
+                                currency.trim().toUpperCase()));
+                        return Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(row['description']! as String),
+                                Text(
+                                  '${direction == 'credit' ? 'إيداع' : 'سحب'} · ${amount.toStringAsFixed(2)} $currency',
+                                ),
+                                DropdownButtonFormField<int>(
+                                  initialValue: selected[id],
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'الحساب المقابل',
+                                  ),
+                                  items: eligible
+                                      .map((account) => DropdownMenuItem<int>(
+                                            value: account.id!,
+                                            child: Text(
+                                              '${account.code} · ${account.name}',
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ))
+                                      .toList(growable: false),
+                                  onChanged: (value) => setDialogState(() {
+                                    if (value == null) {
+                                      selected.remove(id);
+                                    } else {
+                                      selected[id] = value;
+                                    }
+                                  }),
+                                ),
+                                if (eligible.isEmpty)
+                                  const Text(
+                                    'لا يوجد حساب نشط يدعم هذه العملة؛ أضف الحساب أو العملة أولاً.',
+                                  ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('إلغاء'),
+                ),
+                FilledButton(
+                  onPressed: complete
+                      ? () => Navigator.pop(
+                            dialogContext,
+                            Map<int, int>.from(selected),
+                          )
+                      : null,
+                  child: const Text('ترحيل الحركات المطابقة'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+      if (mappings == null || !mounted) return;
+      await _runBankAction(
+        () => widget.controller.postBankSandbox(counterAccountIds: mappings),
+        'الترحيل المحاسبي',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر تجهيز مطابقة كشف البنك: $error')),
+      );
+    }
+  }
+
+  Future<void> _runBankAction(
+      Future<int> Function() action, String label) async {
     try {
       final count = await action();
       if (!mounted) return;

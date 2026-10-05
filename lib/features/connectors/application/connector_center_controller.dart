@@ -19,8 +19,9 @@ class ConnectorCenterController extends ChangeNotifier {
   ConnectorCenterController(
     this.repository, {
     this.catalog = const ConnectorCatalog(),
+    bool listenToNotifications = true,
   }) {
-    _listenToAndroidNotifications();
+    if (listenToNotifications) _listenToAndroidNotifications();
   }
 
   List<ConnectorItem> connectors = const [];
@@ -140,7 +141,9 @@ class ConnectorCenterController extends ChangeNotifier {
     return count;
   }
 
-  Future<int> postBankSandbox() async {
+  Future<int> postBankSandbox({
+    required Map<int, int> counterAccountIds,
+  }) async {
     final settings = (await repository.connectors())
         .where((item) => item.provider == 'bank_sandbox')
         .toList();
@@ -151,8 +154,14 @@ class ConnectorCenterController extends ChangeNotifier {
       repository: repository,
       linkedAccountId: settings.first.linkedAccountId!,
     );
-    final count = await connector.postImported();
+    final count =
+        await connector.postImported(counterAccountIds: counterAccountIds);
     await load();
     return count;
   }
+
+  Future<List<Map<String, Object?>>> bankSandboxTransactions() =>
+      repository.bankSandboxTransactions();
+
+  Future<List<Account>> accountingAccounts() => repository.accounts();
 }

@@ -3,11 +3,13 @@ import 'package:sqflite/sqflite.dart';
 part 'local_database_schema_tables.dart';
 part 'local_database_schema_migrations.dart';
 part 'local_database_schema_accounting_guards.dart';
+part 'local_database_schema_business_links.dart';
 
 class LocalDatabaseSchema {
   static Future<void> createInitialSchema(Database db) async {
     await _createCoreTables(db);
     await _createEnterpriseTables(db);
+    await _ensureBusinessPartyLinks(db);
     await _ensureAuditTrail(db);
     await _ensurePhase2AccountingControls(db);
   }
@@ -115,5 +117,6 @@ class LocalDatabaseSchema {
     }
     if (oldVersion < 28) await _ensureAuditTrail(db);
     if (oldVersion < 29) await _ensurePhase2AccountingControls(db);
+    if (oldVersion < 30) await _ensureBusinessPartyLinks(db);
   }
 }

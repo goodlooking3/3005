@@ -1,7 +1,4 @@
-import 'package:sqflite/sqflite.dart';
-import '../../../../core/accounting.dart';
 import '../../../../data/accounting_repository.dart';
-import '../../../../data/inventory_ledger_accounts.dart';
 import '../../../../data/currency_policy.dart';
 import '../../../../data/local_database.dart';
 import '../../my_wallet/application/accounting_ledger_bridge.dart';
@@ -29,9 +26,19 @@ class PurchaseEngine {
     if (cart.lines.isEmpty || cart.subtotal <= 0 || cart.total <= 0) {
       throw ArgumentError('سلة المشتريات فارغة');
     }
-    if ([adjustments.shipping, adjustments.discount, adjustments.recoverableTax, adjustments.nonRecoverableTax]
-        .any((value) => !value.isFinite || value < 0) || adjustments.discount > cart.subtotal) {
+    if ([
+          adjustments.shipping,
+          adjustments.discount,
+          adjustments.recoverableTax,
+          adjustments.nonRecoverableTax
+        ].any((value) => !value.isFinite || value < 0) ||
+        adjustments.discount > cart.subtotal) {
       throw ArgumentError('تسويات الشراء غير صالحة');
+    }
+    if (adjustments.totalTax > 0) {
+      throw StateError(
+        'الضرائب معطلة حتى تهيئة سياسة ضريبية خاصة ببلد المنشأة',
+      );
     }
     if (cart.lines.any((line) =>
         line.quantity <= 0 ||
@@ -51,6 +58,7 @@ class PurchaseEngine {
     final number = 'PUR-${DateTime.now().millisecondsSinceEpoch}';
     final order = PurchaseOrder(
       number: number,
+      partyId: vendor.partyId,
       vendorId: vendor.id,
       vendorName: vendor.name,
       walletName: walletName,
@@ -64,6 +72,16 @@ class PurchaseEngine {
     );
     await LocalDatabase.instance.write((db) async {
       await db.transaction((txn) async {
+        final suppliers = await txn.query(
+          'parties',
+          columns: ['id'],
+          where: "id = ? AND type = 'supplier' AND active = 1",
+          whereArgs: [vendor.partyId],
+          limit: 1,
+        );
+        if (suppliers.isEmpty) {
+          throw StateError('اختر مورداً نشطاً من دفتر الأطراف قبل الشراء');
+        }
         final valuation = await currencyPolicy.value(
           db: txn,
           amount: cart.total,
@@ -86,15 +104,7 @@ class PurchaseEngine {
           ),
           capitalizeAsInventory: true,
         );
-        if (adjustments.recoverableTax > 0) {
-          await _postRecoverableTax(
-            txn,
-            number: number,
-            amount: adjustments.recoverableTax,
-            currency: currency,
-            date: order.createdAt,
-          );
-        }
+        await txn.insert('wallet_transactions', posted.toMap());
         await txn.insert(
           'purchase_orders',
           order.toMap()
@@ -105,12 +115,13 @@ class PurchaseEngine {
         );
         for (final line in cart.lines) {
           final lineShare = line.total / cart.subtotal;
-          final landedLineCost = line.total - (adjustments.discount * lineShare) +
+          final landedLineCost = line.total -
+              (adjustments.discount * lineShare) +
               (adjustments.shipping * lineShare) +
               (adjustments.nonRecoverableTax * lineShare);
           final landedUnitCost = landedLineCost / line.quantity;
-          final inventoryItemId = await _receiveIntoInventory(
-              txn, line, number, landedUnitCost);
+          final inventoryItemId =
+              await _receiveIntoInventory(txn, line, number, landedUnitCost);
           await txn.insert('purchase_order_lines', {
             'order_number': number,
             'product_id': line.product.id,
@@ -132,56 +143,6 @@ class PurchaseEngine {
       });
     });
     return MarketplaceReceipt(order: order);
-  }
-
-  Future<void> _postRecoverableTax(
-    dynamic txn, {
-    required String number,
-    required double amount,
-    required String currency,
-    required DateTime date,
-  }) async {
-    final inventory = await const InventoryLedgerAccountResolver().ensure(
-      txn,
-      currency: currency,
-    );
-    final taxRows = await txn.query('accounts', where: 'code = ?', whereArgs: ['1410'], limit: 1);
-    final taxId = taxRows.isEmpty
-        ? await txn.insert('accounts', {
-            'code': '1410',
-            'name': 'ضريبة مدخلات قابلة للاسترداد',
-            'type': 'أصل',
-            'kind': AccountKind.asset.name,
-            'parent_id': inventory.inventoryAsset.parentId,
-            'is_group': 0,
-            'currency': currency,
-            'opening_balance': 0,
-            'active': 1,
-          })
-        : taxRows.single['id'] as int;
-    await txn.insert('account_currencies', {
-      'account_id': taxId,
-      'currency': currency,
-      'is_primary': 0,
-    }, conflictAlgorithm: ConflictAlgorithm.ignore);
-    final voucherId = await accounting.insertVoucherInTransaction(
-      txn,
-      Voucher(
-        number: '$number-TAX',
-        type: VoucherType.journal,
-        description: 'إعادة تصنيف ضريبة مدخلات قابلة للاسترداد $number',
-        amount: amount,
-        currency: currency,
-        date: date,
-        debitAccountId: taxId,
-        creditAccountId: inventory.inventoryAsset.id,
-        lines: [
-          VoucherLine(accountId: taxId, accountName: 'ضريبة مدخلات قابلة للاسترداد', debit: amount),
-          VoucherLine(accountId: inventory.inventoryAsset.id, accountName: inventory.inventoryAsset.name, credit: amount),
-        ],
-      ),
-    );
-    if (voucherId <= 0) throw StateError('تعذر تسجيل ضريبة المدخلات');
   }
 
   Future<int> _receiveIntoInventory(
@@ -248,8 +209,7 @@ class PurchaseEngine {
       throw StateError('تعذر حساب متوسط تكلفة صنف ${line.product.name}');
     }
     final weightedAverage =
-        (oldQuantity * oldCost + line.quantity * unitCost) /
-            nextQuantity;
+        (oldQuantity * oldCost + line.quantity * unitCost) / nextQuantity;
     if (!weightedAverage.isFinite || weightedAverage < 0) {
       throw StateError('متوسط تكلفة صنف ${line.product.name} غير صالح');
     }

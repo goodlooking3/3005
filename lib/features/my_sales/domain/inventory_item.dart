@@ -73,6 +73,7 @@ class SalesInvoiceLine {
 
 class SalesInvoice {
   final int? id;
+  final int partyId;
   final String number;
   final String customerName;
   final String paymentAccount;
@@ -83,6 +84,7 @@ class SalesInvoice {
 
   const SalesInvoice({
     this.id,
+    required this.partyId,
     required this.number,
     required this.customerName,
     required this.paymentAccount,
@@ -93,6 +95,7 @@ class SalesInvoice {
   });
 
   double get total => lines.fold(0, (sum, line) => sum + line.total);
-  double get costOfGoodsSold => lines.fold(0, (sum, line) => sum + line.costTotal);
+  double get costOfGoodsSold =>
+      lines.fold(0, (sum, line) => sum + line.costTotal);
   double get profit => total - costOfGoodsSold;
 }

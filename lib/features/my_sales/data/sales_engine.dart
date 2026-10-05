@@ -7,6 +7,8 @@ import '../../../../data/inventory_ledger_posting.dart';
 import '../domain/inventory_item.dart';
 import '../domain/inventory_movement.dart';
 
+part 'sales_engine_inventory.dart';
+
 class SalesEngine {
   final AccountingRepository accounting;
   final InventoryLedgerPosting inventoryLedger;
@@ -24,6 +26,14 @@ class SalesEngine {
     _validateInvoice(invoice);
     return LocalDatabase.instance.write((db) async {
       return db.transaction((txn) async {
+        final parties = await txn.query(
+          'parties',
+          columns: ['id'],
+          where: "id = ? AND type = 'customer' AND active = 1",
+          whereArgs: [invoice.partyId],
+          limit: 1,
+        );
+        if (parties.isEmpty) throw StateError('يجب اختيار عميل نشط للفاتورة');
         final costedInvoice = await _costInvoiceAtCurrentAverage(txn, invoice);
         final journalId = await accounting.insertSalesJournal(
           txn,
@@ -34,6 +44,7 @@ class SalesEngine {
           date: invoice.issuedAt,
           cashAccountId: cashAccountId,
           salesAccountId: salesAccountId,
+          partyId: invoice.partyId,
           paymentAccount: invoice.paymentAccount,
           customerName: invoice.customerName,
         );
@@ -213,6 +224,10 @@ class SalesEngine {
               0;
           final reversalNumber =
               '$numberPrefix$invoiceNumber-${reversalCount + 1}';
+          final partyId = invoice['party_id'] as int?;
+          if (partyId == null) {
+            throw StateError('اربط الفاتورة القديمة بعميل قبل إنشاء المرتجع');
+          }
           final reversalJournalId = await accounting.insertSalesReversalJournal(
             txn,
             number: reversalNumber,
@@ -222,6 +237,7 @@ class SalesEngine {
             date: returnedAt,
             cashAccountId: resolvedCashAccountId,
             salesAccountId: resolvedSalesAccountId,
+            partyId: partyId,
             paymentAccount: invoice['payment_account']! as String,
             customerName: invoice['customer_name']! as String,
             source: referenceType,
@@ -233,6 +249,11 @@ class SalesEngine {
                 (line['return_quantity']! as num).toDouble() *
                     (line['unit_cost']! as num).toDouble(),
           );
+          if (returnCost > 0 && invoice['cost_journal_entry_id'] == null) {
+            throw StateError(
+              'لا يمكن إرجاع فاتورة قديمة بلا قيد تكلفة؛ يلزم تسوية محاسبية موثقة أولاً',
+            );
+          }
           final costJournalId = invoice['cost_journal_entry_id'] == null
               ? null
               : await inventoryLedger.postCostOfGoods(
@@ -309,6 +330,7 @@ class SalesEngine {
               'invoice_line_id': line['id'],
               'quantity': quantity,
               'amount': quantity * (line['unit_price']! as num).toDouble(),
+              'party_id': invoice['party_id'],
               'journal_entry_id': reversalJournalId,
               'cost_journal_entry_id': costJournalId,
               'created_at': returnedAt.toIso8601String(),
@@ -341,6 +363,7 @@ class SalesEngine {
 
   void _validateInvoice(SalesInvoice invoice) {
     if (invoice.number.trim().isEmpty ||
+        invoice.partyId <= 0 ||
         invoice.customerName.trim().isEmpty ||
         invoice.paymentAccount.trim().isEmpty ||
         invoice.currency.trim().isEmpty ||
@@ -352,53 +375,6 @@ class SalesEngine {
             line.unitPrice < 0)) {
       throw ArgumentError('بيانات الفاتورة غير صالحة');
     }
-  }
-
-  Future<SalesInvoice> _costInvoiceAtCurrentAverage(
-    Transaction txn,
-    SalesInvoice invoice,
-  ) async {
-    final costedLines = <SalesInvoiceLine>[];
-    for (final line in invoice.lines) {
-      final rows = await txn.query(
-        'inventory_items',
-        columns: ['quantity', 'cost_price', 'active', 'currency'],
-        where: 'id = ?',
-        whereArgs: [line.itemId],
-        limit: 1,
-      );
-      if (rows.isEmpty || rows.single['active'] != 1) {
-        throw StateError('الصنف غير موجود أو غير نشط: ${line.itemName}');
-      }
-      if ((rows.single['currency'] as String).trim().toUpperCase() !=
-          invoice.currency.trim().toUpperCase()) {
-        throw StateError('عملة الصنف لا تطابق عملة الفاتورة: ${line.itemName}');
-      }
-      if ((rows.single['quantity'] as num).toDouble() < line.quantity) {
-        throw StateError('المخزون غير كافٍ للمنتج ${line.itemName}');
-      }
-      final averageCost = (rows.single['cost_price']! as num).toDouble();
-      if (!averageCost.isFinite || averageCost < 0) {
-        throw StateError('متوسط تكلفة الصنف غير صالح: ${line.itemName}');
-      }
-      costedLines.add(SalesInvoiceLine(
-        itemId: line.itemId,
-        itemName: line.itemName,
-        quantity: line.quantity,
-        unitPrice: line.unitPrice,
-        unitCost: averageCost,
-      ));
-    }
-    return SalesInvoice(
-      id: invoice.id,
-      number: invoice.number,
-      customerName: invoice.customerName,
-      paymentAccount: invoice.paymentAccount,
-      currency: invoice.currency,
-      issuedAt: invoice.issuedAt,
-      lines: costedLines,
-      status: invoice.status,
-    );
   }
 
   Future<void> _decrementStock(
@@ -414,37 +390,6 @@ class SalesEngine {
     }
   }
 
-  Future<void> _recordMovements(
-    Transaction txn,
-    List<SalesInvoiceLine> lines, {
-    required String movementType,
-    required String referenceType,
-    required String referenceId,
-    required String note,
-  }) async {
-    for (final line in lines) {
-      final item = await txn.query(
-        'inventory_items',
-        columns: ['quantity'],
-        where: 'id = ?',
-        whereArgs: [line.itemId],
-        limit: 1,
-      );
-      await txn.insert('inventory_movements', {
-        'item_id': line.itemId,
-        'quantity': -line.quantity,
-        'movement_type': movementType,
-        'reference_type': referenceType,
-        'reference_id': referenceId,
-        'unit_cost': line.unitCost,
-        'unit_price': line.unitPrice,
-        'balance_after': item.single['quantity'],
-        'created_at': DateTime.now().toIso8601String(),
-        'note': note,
-      });
-    }
-  }
-
   Future<void> _saveInvoice(
       Transaction txn, SalesInvoice invoice, int journalId,
       {int? costJournalId}) async {
@@ -456,6 +401,7 @@ class SalesEngine {
     );
     await txn.insert('sales_invoices', {
       'number': invoice.number,
+      'party_id': invoice.partyId,
       'customer_name': invoice.customerName,
       'payment_account': invoice.paymentAccount,
       'currency': invoice.currency,

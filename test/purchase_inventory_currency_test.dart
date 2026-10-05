@@ -13,7 +13,15 @@ void main() {
     databaseFactory = databaseFactoryFfiNoIsolate;
   });
 
-  setUp(() => LocalDatabase.instance.resetForTests());
+  setUp(() async {
+    await LocalDatabase.instance.resetForTests();
+    await (await LocalDatabase.instance.database).insert('parties', {
+      'id': 701,
+      'name': 'مورد اختبار المشتريات',
+      'type': 'supplier',
+      'currency': 'SAR',
+    });
+  });
 
   test('purchase checkout receives the same product into unified inventory',
       () async {
@@ -24,8 +32,12 @@ void main() {
       price: 12,
       currency: 'SAR',
     );
-    await PurchaseEngine().checkout(
-      vendor: const Vendor(name: 'مورد تكاملي', category: 'تجزئة'),
+    final receipt = await PurchaseEngine().checkout(
+      vendor: const Vendor(
+        partyId: 701,
+        name: 'مورد تكاملي',
+        category: 'تجزئة',
+      ),
       cart: PurchaseCart([PurchaseCartLine(product: product, quantity: 3)]),
       walletName: 'المحفظة الرئيسية',
       walletAccount: 'المحفظة الرئيسية',
@@ -45,12 +57,31 @@ void main() {
     expect(items.single['quantity'], 3.0);
     expect(movements, hasLength(1));
     expect(movements.single['quantity'], 3.0);
+    final order = (await db.query(
+      'purchase_orders',
+      where: 'number = ?',
+      whereArgs: [receipt.order.number],
+    ))
+        .single;
+    expect(order['party_id'], 701);
+    final walletTransactions = await db.query(
+      'wallet_transactions',
+      where: 'related_entity_id = ?',
+      whereArgs: [receipt.order.number],
+    );
+    expect(walletTransactions, hasLength(1));
+    expect(walletTransactions.single['journal_entry_id'],
+        order['journal_entry_id']);
   });
 
   test('purchase capitalization updates moving weighted average cost',
       () async {
     final engine = PurchaseEngine();
-    final vendor = const Vendor(name: 'مورد المتوسط', category: 'تجزئة');
+    final vendor = const Vendor(
+      partyId: 701,
+      name: 'مورد المتوسط',
+      category: 'تجزئة',
+    );
     final first = await engine.checkout(
       vendor: vendor,
       cart: PurchaseCart([
@@ -123,24 +154,68 @@ void main() {
     expect(first.order.number, isNot(second.order.number));
   });
 
-  test('purchase adjustments land in inventory and reclassify recoverable tax', () async {
-    const product = MarketplaceProduct(vendorId: 1, name: 'صنف تسويات', category: 'تجزئة', price: 100, currency: 'SAR');
+  test('purchase adjustments capitalize shipping and discounts without tax',
+      () async {
+    const product = MarketplaceProduct(
+        vendorId: 1,
+        name: 'صنف تسويات',
+        category: 'تجزئة',
+        price: 100,
+        currency: 'SAR');
     final receipt = await PurchaseEngine().checkout(
-      vendor: const Vendor(name: 'مورد التسويات', category: 'تجزئة'),
+      vendor: const Vendor(
+        partyId: 701,
+        name: 'مورد التسويات',
+        category: 'تجزئة',
+      ),
       cart: const PurchaseCart(
         [PurchaseCartLine(product: product, quantity: 2)],
-        adjustments: PurchaseAdjustments(shipping: 20, discount: 10, recoverableTax: 15, nonRecoverableTax: 5),
+        adjustments: PurchaseAdjustments(shipping: 20, discount: 10),
       ),
       walletName: 'محفظة التسويات',
       walletAccount: 'محفظة التسويات',
     );
     final db = await LocalDatabase.instance.database;
-    final item = (await db.query('inventory_items', where: 'name = ?', whereArgs: [product.name])).single;
-    expect(item['cost_price'], 107.5);
-    final order = (await db.query('purchase_orders', where: 'number = ?', whereArgs: [receipt.order.number])).single;
-    expect(order['total'], 230.0);
-    expect(order['recoverable_tax'], 15.0);
-    expect((await db.query('accounts', where: 'code = ?', whereArgs: ['1410'])), hasLength(1));
+    final item = (await db.query('inventory_items',
+            where: 'name = ?', whereArgs: [product.name]))
+        .single;
+    expect(item['cost_price'], 105.0);
+    final order = (await db.query('purchase_orders',
+            where: 'number = ?', whereArgs: [receipt.order.number]))
+        .single;
+    expect(order['total'], 210.0);
+    expect(order['recoverable_tax'], 0.0);
+    expect((await db.query('accounts', where: 'code = ?', whereArgs: ['1410'])),
+        isEmpty);
+  });
+
+  test('tax cannot be posted before a country policy is configured', () async {
+    const product = MarketplaceProduct(
+      vendorId: 1,
+      name: 'صنف ضريبة غير مهيأة',
+      category: 'تجزئة',
+      price: 100,
+      currency: 'SAR',
+    );
+    await expectLater(
+      PurchaseEngine().checkout(
+        vendor: const Vendor(
+          partyId: 701,
+          name: 'مورد اختبار المشتريات',
+          category: 'تجزئة',
+        ),
+        cart: const PurchaseCart(
+          [PurchaseCartLine(product: product)],
+          adjustments: PurchaseAdjustments(recoverableTax: 15),
+        ),
+        walletName: 'المحفظة الرئيسية',
+        walletAccount: 'المحفظة الرئيسية',
+      ),
+      throwsStateError,
+    );
+    final db = await LocalDatabase.instance.database;
+    expect(await db.query('purchase_orders'), isEmpty);
+    expect(await db.query('journal_entries'), isEmpty);
   });
 
   test('currency repository requires and applies a dated exchange rate',
@@ -176,6 +251,7 @@ void main() {
       PurchaseEngine().checkout(
         vendor: const Vendor(
           id: 999,
+          partyId: 701,
           name: 'مورد غير موجود',
           category: 'تجزئة',
         ),

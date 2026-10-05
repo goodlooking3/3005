@@ -31,6 +31,12 @@ void main() {
   setUp(() async {
     await LocalDatabase.instance.resetForTests();
     final db = await LocalDatabase.instance.database;
+    await db.insert('parties', {
+      'id': 701,
+      'name': 'عميل اختبار التكامل',
+      'type': 'customer',
+      'currency': 'SAR',
+    });
     await db.insert('accounts', {
       'id': 101,
       'code': 'TEST-CASH',
@@ -256,6 +262,7 @@ void main() {
     final invoice = SalesInvoice(
       number: number,
       customerName: 'عميل تكامل',
+      partyId: 701,
       paymentAccount: 'الصندوق',
       currency: 'SAR',
       issuedAt: DateTime.utc(2026, 1, 3),

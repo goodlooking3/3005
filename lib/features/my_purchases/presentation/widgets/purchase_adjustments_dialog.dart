@@ -8,8 +8,6 @@ Future<PurchaseAdjustments?> showPurchaseAdjustmentsDialog({
 }) async {
   final shipping = TextEditingController();
   final discount = TextEditingController();
-  final recoverableTax = TextEditingController();
-  final nonRecoverableTax = TextEditingController();
   final subtotal = lines.fold<double>(0, (sum, line) => sum + line.total);
   final currency = lines.isEmpty ? '' : lines.first.product.currency;
   String? validationError;
@@ -17,8 +15,8 @@ Future<PurchaseAdjustments?> showPurchaseAdjustmentsDialog({
   PurchaseAdjustments? parsedAdjustments() => PurchaseAdjustments.tryParse(
         shipping: shipping.text,
         discount: discount.text,
-        recoverableTax: recoverableTax.text,
-        nonRecoverableTax: nonRecoverableTax.text,
+        recoverableTax: '0',
+        nonRecoverableTax: '0',
         subtotal: subtotal,
       );
 
@@ -39,8 +37,6 @@ Future<PurchaseAdjustments?> showPurchaseAdjustmentsDialog({
                 for (final entry in [
                   (shipping, 'الشحن والتكاليف الواردة'),
                   (discount, 'الخصم التجاري'),
-                  (recoverableTax, 'ضريبة مدخلات قابلة للاسترداد'),
-                  (nonRecoverableTax, 'ضريبة غير قابلة للاسترداد'),
                 ])
                   TextField(
                     controller: entry.$1,
@@ -55,6 +51,12 @@ Future<PurchaseAdjustments?> showPurchaseAdjustmentsDialog({
                       validationError = null;
                     }),
                   ),
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    'الضرائب معطلة حتى ضبط سياسة بلد المنشأة؛ لا تُفترض معدلات أو حسابات ضريبية.',
+                  ),
+                ),
                 if (total != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
@@ -99,7 +101,5 @@ Future<PurchaseAdjustments?> showPurchaseAdjustmentsDialog({
   );
   shipping.dispose();
   discount.dispose();
-  recoverableTax.dispose();
-  nonRecoverableTax.dispose();
   return result;
 }

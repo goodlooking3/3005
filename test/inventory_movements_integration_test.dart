@@ -28,6 +28,12 @@ void main() {
       'kind': 'revenue',
       'currency': 'SAR',
     });
+    await db.insert('parties', {
+      'id': 701,
+      'name': 'عميل اختبار الحركات',
+      'type': 'customer',
+      'currency': 'SAR',
+    });
   });
 
   test('sale and full return reconcile stock, movement log and journals',
@@ -60,6 +66,7 @@ void main() {
     final invoice = SalesInvoice(
       number: number,
       customerName: 'عميل المرتجع',
+      partyId: 701,
       paymentAccount: 'الصندوق البديل',
       currency: 'SAR',
       issuedAt: DateTime.utc(2026, 1, 4),
@@ -100,7 +107,15 @@ void main() {
         .single;
     expect(invoiceRow['status'], 'returned');
     expect(invoiceRow['reversal_journal_entry_id'], returnJournal);
+    expect(invoiceRow['party_id'], 701);
     expect(invoiceRow['cost_of_goods_sold'], 20.0);
+    final salePartyLine = (await db.query(
+      'journal_lines',
+      where: 'journal_entry_id = ? AND party_id IS NOT NULL',
+      whereArgs: [saleJournal],
+    ))
+        .single;
+    expect(salePartyLine['party_id'], 701);
     final saleLine = (await db.query('sales_invoice_lines',
             where: 'invoice_number = ?', whereArgs: [number]))
         .single;
@@ -135,6 +150,7 @@ void main() {
     final returnCostLine = (await db.query('sales_return_lines',
             where: 'invoice_number = ?', whereArgs: [number]))
         .single;
+    expect(returnCostLine['party_id'], 701);
     final returnCostJournal = (await db.query('journal_entries',
             where: 'id = ?',
             whereArgs: [returnCostLine['cost_journal_entry_id']]))
@@ -196,6 +212,7 @@ void main() {
     final invoice = SalesInvoice(
       number: number,
       customerName: 'عميل جزئي',
+      partyId: 701,
       paymentAccount: 'الصندوق',
       currency: 'SAR',
       issuedAt: DateTime.utc(2026, 1, 7),
@@ -266,6 +283,7 @@ void main() {
     final invoice = SalesInvoice(
       number: number,
       customerName: 'عميل الإلغاء',
+      partyId: 701,
       paymentAccount: 'الصندوق',
       currency: 'SAR',
       issuedAt: DateTime.utc(2026, 1, 6),
@@ -320,6 +338,7 @@ void main() {
     final invoice = SalesInvoice(
       number: number,
       customerName: 'عميل المرتجع المرحلي',
+      partyId: 701,
       paymentAccount: 'الصندوق',
       currency: 'SAR',
       issuedAt: DateTime.utc(2026, 1, 9),
@@ -382,6 +401,75 @@ void main() {
         quantitiesByLineId: {999999: 1},
       ),
       throwsStateError,
+    );
+  });
+
+  test('legacy return without its cost journal is rejected atomically',
+      () async {
+    final db = await LocalDatabase.instance.database;
+    final number = 'MOV-LEGACY-${DateTime.now().microsecondsSinceEpoch}';
+    final itemId = await db.insert('inventory_items', {
+      'name': 'صنف فاتورة قديمة',
+      'sku': number,
+      'cost_price': 6.0,
+      'sale_price': 10.0,
+      'quantity': 2.0,
+      'low_stock_threshold': 1.0,
+      'currency': 'SAR',
+    });
+    final engine = SalesEngine();
+    await engine.completeSale(
+      invoice: SalesInvoice(
+        number: number,
+        customerName: 'عميل قديم',
+        partyId: 701,
+        paymentAccount: 'الصندوق',
+        currency: 'SAR',
+        issuedAt: DateTime.utc(2026, 1, 12),
+        lines: [
+          SalesInvoiceLine(
+            itemId: itemId,
+            itemName: 'صنف فاتورة قديمة',
+            quantity: 1,
+            unitPrice: 10,
+            unitCost: 6,
+          ),
+        ],
+      ),
+      cashAccountId: 101,
+      salesAccountId: 401,
+    );
+    await db.update(
+      'sales_invoices',
+      {'cost_journal_entry_id': null},
+      where: 'number = ?',
+      whereArgs: [number],
+    );
+    final journalCount = (await db.query('journal_entries')).length;
+
+    await expectLater(
+      () => engine.returnSale(invoiceNumber: number),
+      throwsStateError,
+    );
+
+    final invoice = (await db.query(
+      'sales_invoices',
+      where: 'number = ?',
+      whereArgs: [number],
+    ))
+        .single;
+    expect(invoice['status'], 'posted');
+    expect((await db.query('journal_entries')), hasLength(journalCount));
+    expect(await db.query('sales_return_lines'), isEmpty);
+    expect(
+      (await db.query('inventory_items', where: 'id = ?', whereArgs: [itemId]))
+          .single['quantity'],
+      1.0,
+    );
+    expect(
+      await db.query('inventory_movements',
+          where: 'reference_id = ?', whereArgs: [number]),
+      hasLength(1),
     );
   });
 }

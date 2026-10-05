@@ -110,7 +110,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('تسويات الشراء'), findsOneWidget);
     expect(find.text('الإجمالي بعد التسويات: 30.00 SAR'), findsOneWidget);
-    expect(find.byType(TextField), findsNWidgets(5));
+    expect(find.byType(TextField), findsNWidgets(3));
     expect(tester.takeException(), isNull);
 
     tester.view.physicalSize = const Size(1280, 900);

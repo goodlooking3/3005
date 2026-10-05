@@ -30,6 +30,18 @@ void main() {
       'kind': 'revenue',
       'currency': 'SAR',
     });
+    await db.insert('parties', {
+      'id': 701,
+      'name': 'عميل اختبار المتوسط',
+      'type': 'customer',
+      'currency': 'SAR',
+    });
+    await db.insert('parties', {
+      'id': 702,
+      'name': 'مورد اختبار المتوسط',
+      'type': 'supplier',
+      'currency': 'SAR',
+    });
   });
 
   test('moving average and returns retain the original sale cost', () async {
@@ -44,7 +56,8 @@ void main() {
       'currency': 'SAR',
     });
     final purchaseEngine = PurchaseEngine();
-    final vendor = const Vendor(name: 'مورد المتوسط', category: 'تجزئة');
+    final vendor =
+        const Vendor(partyId: 702, name: 'مورد المتوسط', category: 'تجزئة');
 
     Future<void> purchase(double price, int quantity) async {
       await purchaseEngine.checkout(
@@ -84,6 +97,7 @@ void main() {
       invoice: SalesInvoice(
         number: number,
         customerName: 'عميل اختبار المتوسط',
+        partyId: 701,
         paymentAccount: 'الصندوق',
         currency: 'SAR',
         issuedAt: DateTime.utc(2026, 2, 1),

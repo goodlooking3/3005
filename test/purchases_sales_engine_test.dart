@@ -11,7 +11,8 @@ void main() {
       price: 12.5,
       currency: 'SAR',
     );
-    const cart = PurchaseCart([PurchaseCartLine(product: product, quantity: 3)]);
+    const cart =
+        PurchaseCart([PurchaseCartLine(product: product, quantity: 3)]);
     expect(cart.total, 37.5);
     expect(cart.currency, 'SAR');
   });
@@ -32,11 +33,17 @@ void main() {
     final invoice = SalesInvoice(
       number: 'S-1',
       customerName: 'عميل',
+      partyId: 1,
       paymentAccount: 'الصندوق',
       currency: 'SAR',
       issuedAt: DateTime(2026, 1, 1),
       lines: [
-        SalesInvoiceLine(itemId: 1, itemName: 'مياه', quantity: 2, unitPrice: 18, unitCost: 10),
+        SalesInvoiceLine(
+            itemId: 1,
+            itemName: 'مياه',
+            quantity: 2,
+            unitPrice: 18,
+            unitCost: 10),
       ],
     );
     expect(invoice.total, 36);

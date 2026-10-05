@@ -10,6 +10,7 @@ extension AccountingRepositoryPosting on AccountingRepository {
     required DateTime date,
     required int cashAccountId,
     required int salesAccountId,
+    required int partyId,
     required String paymentAccount,
     required String customerName,
   }) async {
@@ -64,6 +65,7 @@ extension AccountingRepositoryPosting on AccountingRepository {
         'account_name': paymentAccount.trim(),
         'debit': amount,
         'credit': 0,
+        'party_id': partyId,
         'party_name': customerName
       },
       {
@@ -106,6 +108,7 @@ extension AccountingRepositoryPosting on AccountingRepository {
     required DateTime date,
     required int cashAccountId,
     required int salesAccountId,
+    required int partyId,
     required String paymentAccount,
     required String customerName,
     required String source,
@@ -164,6 +167,7 @@ extension AccountingRepositoryPosting on AccountingRepository {
         'account_name': paymentAccount.trim(),
         'debit': 0,
         'credit': amount,
+        'party_id': partyId,
         'party_name': customerName
       },
     ];

@@ -105,34 +105,14 @@ class WalletRepositoryImpl implements IWalletRepository {
   }
 
   @override
-  Future<int> saveWallet(Wallet wallet) => LocalDatabase.instance.write(
-        (db) => db.insert(
-            'wallets',
-            {
-              'id': wallet.id,
-              'name': wallet.name,
-              'provider_id': wallet.provider.id,
-              'provider_name': wallet.provider.name,
-              'deep_link': wallet.provider.deepLink,
-            },
-            conflictAlgorithm: ConflictAlgorithm.replace),
-      );
+  Future<int> saveWallet(Wallet wallet) =>
+      LocalDatabase.instance.write((db) => _saveWallet(db, wallet));
 
   @override
   Future<void> saveWalletWithAccount(Wallet wallet, WalletAccount account) =>
       LocalDatabase.instance.write((db) async {
         await db.transaction((txn) async {
-          await txn.insert(
-            'wallets',
-            {
-              'id': wallet.id,
-              'name': wallet.name.trim(),
-              'provider_id': wallet.provider.id,
-              'provider_name': wallet.provider.name.trim(),
-              'deep_link': wallet.provider.deepLink,
-            },
-            conflictAlgorithm: ConflictAlgorithm.replace,
-          );
+          await _saveWallet(txn, wallet);
           await _validateWalletAccountLink(txn, account);
           await txn.insert(
             'wallet_accounts',
@@ -141,6 +121,33 @@ class WalletRepositoryImpl implements IWalletRepository {
           );
         });
       });
+
+  Future<int> _saveWallet(DatabaseExecutor db, Wallet wallet) async {
+    final values = {
+      'name': wallet.name.trim(),
+      'provider_id': wallet.provider.id,
+      'provider_name': wallet.provider.name.trim(),
+      'deep_link': wallet.provider.deepLink,
+    };
+    final existing = await db.query(
+      'wallets',
+      columns: ['rowid'],
+      where: 'id = ?',
+      whereArgs: [wallet.id],
+      limit: 1,
+    );
+    if (existing.isEmpty) {
+      return db.insert('wallets', {'id': wallet.id, ...values});
+    }
+    final updated = await db.update(
+      'wallets',
+      values,
+      where: 'id = ?',
+      whereArgs: [wallet.id],
+    );
+    if (updated != 1) throw StateError('تعذر تحديث بيانات المحفظة');
+    return existing.single['rowid']! as int;
+  }
 
   @override
   Future<int> saveAccount(WalletAccount account) =>
@@ -220,7 +227,9 @@ class WalletRepositoryImpl implements IWalletRepository {
     );
     final allowed = permitted.isEmpty
         ? <String>{(rows.single['currency']! as String).toUpperCase()}
-        : permitted.map((row) => (row['currency']! as String).toUpperCase()).toSet();
+        : permitted
+            .map((row) => (row['currency']! as String).toUpperCase())
+            .toSet();
     if (!allowed.contains(currency)) {
       throw StateError('العملة المحددة غير مسموحة لهذا الحساب المحاسبي');
     }
@@ -243,59 +252,95 @@ class WalletRepositoryImpl implements IWalletRepository {
 
   @override
   Future<int> saveTransaction(WalletTransaction transaction) async {
-    return LocalDatabase.instance.write((db) async {
-      return db.transaction((txn) async {
-        final reference = (transaction.sourceReference ?? transaction.reference)?.trim();
-        if (reference != null && reference.isNotEmpty) {
-          final existing = await txn.query(
-            'wallet_transactions',
-            columns: ['id'],
-            where: transaction.sourceReference == null
-                ? 'reference = ?'
-                : 'source_reference = ?',
-            whereArgs: [reference],
-            limit: 1,
-          );
-          if (existing.isNotEmpty) return existing.single['id']! as int;
-        }
-        final posted = await ledgerBridge.postInTransaction(txn, transaction);
-        final sourceId = await _walletAccountId(
-          txn, transaction.fromAccount, transaction.currency,
-        );
-        final destinationId = await _walletAccountId(
-          txn, transaction.toAccount, transaction.currency,
-        );
-        return txn.insert('wallet_transactions', _transactionMap(
-          posted.copyWith(
-            fromWalletAccountId: sourceId,
-            toWalletAccountId: destinationId,
-          ),
-        ));
-      });
-    });
+    return LocalDatabase.instance.write(
+      (db) => db.transaction(
+        (txn) => _saveTransactionInTransaction(txn, transaction),
+      ),
+    );
+  }
+
+  Future<int> _saveTransactionInTransaction(
+    Transaction txn,
+    WalletTransaction transaction,
+  ) async {
+    final reference =
+        (transaction.sourceReference ?? transaction.reference)?.trim();
+    if (reference != null && reference.isNotEmpty) {
+      final existing = await txn.query(
+        'wallet_transactions',
+        columns: ['id'],
+        where: transaction.sourceReference == null
+            ? 'reference = ?'
+            : 'source_reference = ?',
+        whereArgs: [reference],
+        limit: 1,
+      );
+      if (existing.isNotEmpty) return existing.single['id']! as int;
+    }
+    final posted = await ledgerBridge.postInTransaction(txn, transaction);
+    final sourceId = await _walletAccountId(
+      txn,
+      transaction.fromAccount,
+      transaction.currency,
+      walletAccountId: transaction.fromWalletAccountId,
+    );
+    final destinationId = await _walletAccountId(
+      txn,
+      transaction.toAccount,
+      transaction.currency,
+      walletAccountId: transaction.toWalletAccountId,
+    );
+    return txn.insert(
+      'wallet_transactions',
+      _transactionMap(posted.copyWith(
+        fromWalletAccountId: sourceId,
+        toWalletAccountId: destinationId,
+      )),
+    );
   }
 
   Future<int?> _walletAccountId(
     DatabaseExecutor db,
     String name,
-    String currency,
-  ) async {
+    String currency, {
+    int? walletAccountId,
+  }) async {
+    final normalizedCurrency = currency.trim().toUpperCase();
+    if (walletAccountId != null) {
+      final byId = await db.query(
+        'wallet_accounts',
+        columns: ['id'],
+        where: 'id = ? AND active = 1 AND currency = ?',
+        whereArgs: [walletAccountId, normalizedCurrency],
+        limit: 1,
+      );
+      if (byId.isEmpty) {
+        throw StateError('حساب المحفظة المحدد غير موجود أو غير نشط');
+      }
+      return byId.single['id']! as int;
+    }
     final rows = await db.query(
       'wallet_accounts',
       columns: ['id'],
       where: 'name = ? AND currency = ? AND active = 1',
-      whereArgs: [name.trim(), currency.trim().toUpperCase()],
-      orderBy: 'id DESC',
-      limit: 1,
+      whereArgs: [name.trim(), normalizedCurrency],
     );
+    if (rows.length > 1) {
+      throw StateError('اسم حساب المحفظة ملتبس؛ مرر معرف الحساب صراحة');
+    }
     return rows.isEmpty ? null : rows.single['id']! as int;
   }
 
   @override
   Future<void> importTransactions(List<WalletTransaction> transactions) async {
-    for (final item in transactions) {
-      await saveTransaction(item);
-    }
+    if (transactions.isEmpty) return;
+    await LocalDatabase.instance.write((db) async {
+      await db.transaction((txn) async {
+        for (final transaction in transactions) {
+          await _saveTransactionInTransaction(txn, transaction);
+        }
+      });
+    });
   }
 
   Map<String, Object?> _transactionMap(WalletTransaction transaction) => {

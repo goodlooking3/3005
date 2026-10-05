@@ -25,9 +25,12 @@ class BankSandboxConnector implements ConnectorAdapter {
   @override
   Future<void> connect() async {
     final accounts = await repository.accounts();
-    final matches = accounts.where((item) => item.id == linkedAccountId).toList();
+    final matches =
+        accounts.where((item) => item.id == linkedAccountId).toList();
     final account = matches.isEmpty ? null : matches.first;
-    if (account == null || account.kind != AccountKind.bank || !account.active) {
+    if (account == null ||
+        account.kind != AccountKind.bank ||
+        !account.active) {
       _status = ConnectorStatus.error;
       throw StateError('الحساب البنكي المرتبط غير موجود أو غير نشط');
     }
@@ -81,7 +84,7 @@ class BankSandboxConnector implements ConnectorAdapter {
     return imported;
   }
 
-  Future<int> postImported() async {
+  Future<int> postImported({required Map<int, int> counterAccountIds}) async {
     await connect();
     final accounts = await repository.accounts();
     final bank = accounts.firstWhere((item) => item.id == linkedAccountId);
@@ -89,20 +92,28 @@ class BankSandboxConnector implements ConnectorAdapter {
     var posted = 0;
     for (final row in rows.where((item) => item['status'] == 'imported')) {
       final currency = row['currency']! as String;
-      final counterpart = accounts.firstWhere(
-        (item) =>
-            item.id != bank.id &&
-            item.active &&
-            (item.kind == AccountKind.revenue || item.kind == AccountKind.expense) &&
-            item.supportedCurrencies.contains(currency),
-        orElse: () => throw StateError('لا يوجد حساب مقابل يدعم عملة $currency'),
-      );
+      final transactionId = row['id']! as int;
+      final selectedId = counterAccountIds[transactionId];
+      if (selectedId == null) {
+        throw StateError('يجب اختيار الحساب المقابل لكل حركة كشف بنك');
+      }
+      final matches = accounts.where((item) => item.id == selectedId).toList();
+      final counterpart = matches.isEmpty ? null : matches.single;
+      if (counterpart == null ||
+          !counterpart.active ||
+          counterpart.id == bank.id ||
+          !counterpart.supportedCurrencies
+              .map((value) => value.trim().toUpperCase())
+              .contains(currency.trim().toUpperCase())) {
+        throw StateError('الحساب المقابل غير صالح أو لا يدعم عملة $currency');
+      }
       final amount = (row['amount']! as num).toDouble();
       final direction = row['direction']! as String;
       final debit = direction == 'credit' ? bank : counterpart;
       final credit = direction == 'credit' ? counterpart : bank;
       final voucherNumber = 'BANK-SBX-${row['external_id']}';
-      final existingVoucherId = await repository.voucherIdByNumber(voucherNumber);
+      final existingVoucherId =
+          await repository.voucherIdByNumber(voucherNumber);
       if (existingVoucherId != null) {
         await repository.markBankSandboxPosted(
           id: row['id']! as int,
@@ -111,7 +122,7 @@ class BankSandboxConnector implements ConnectorAdapter {
         posted++;
         continue;
       }
-      final voucherId = await repository.insertVoucher(Voucher(
+      final voucher = Voucher(
         number: voucherNumber,
         type: direction == 'credit' ? VoucherType.receipt : VoucherType.payment,
         description: row['description']! as String,
@@ -134,10 +145,10 @@ class BankSandboxConnector implements ConnectorAdapter {
             currency: currency,
           ),
         ],
-      ));
-      await repository.markBankSandboxPosted(
-        id: row['id']! as int,
-        voucherId: voucherId,
+      );
+      await repository.postBankSandboxTransaction(
+        id: transactionId,
+        voucher: voucher,
       );
       posted++;
     }

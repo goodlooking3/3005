@@ -1,5 +1,6 @@
 class Vendor {
   final int? id;
+  final int? partyId;
   final String name;
   final String category;
   final String phone;
@@ -8,6 +9,7 @@ class Vendor {
 
   const Vendor({
     this.id,
+    this.partyId,
     required this.name,
     required this.category,
     this.phone = '',
@@ -17,6 +19,7 @@ class Vendor {
 
   factory Vendor.fromMap(Map<String, Object?> map) => Vendor(
         id: map['id'] as int?,
+        partyId: map['party_id'] as int?,
         name: map['name']! as String,
         category: map['category']! as String,
         phone: map['phone'] as String? ?? '',
@@ -26,12 +29,23 @@ class Vendor {
 
   Map<String, Object?> toMap() => {
         'id': id,
+        'party_id': partyId,
         'name': name,
         'category': category,
         'phone': phone,
         'image_url': imageUrl,
         'approved': approved ? 1 : 0,
       };
+
+  Vendor copyWith({int? partyId}) => Vendor(
+        id: id,
+        partyId: partyId ?? this.partyId,
+        name: name,
+        category: category,
+        phone: phone,
+        imageUrl: imageUrl,
+        approved: approved,
+      );
 }
 
 class MarketplaceProduct {
@@ -201,6 +215,7 @@ class ProductSeedData {
 
 class PurchaseOrder {
   final int? id;
+  final int? partyId;
   final String number;
   final int? vendorId;
   final String vendorName;
@@ -216,6 +231,7 @@ class PurchaseOrder {
 
   const PurchaseOrder({
     this.id,
+    this.partyId,
     required this.number,
     this.vendorId,
     required this.vendorName,
@@ -232,6 +248,7 @@ class PurchaseOrder {
 
   Map<String, Object?> toMap() => {
         'id': id,
+        'party_id': partyId,
         'number': number,
         'vendor_id': vendorId,
         'vendor_name': vendorName,
@@ -248,6 +265,7 @@ class PurchaseOrder {
 
   factory PurchaseOrder.fromMap(Map<String, Object?> map) => PurchaseOrder(
         id: map['id'] as int?,
+        partyId: map['party_id'] as int?,
         number: map['number']! as String,
         vendorId: map['vendor_id'] as int?,
         vendorName: map['vendor_name']! as String,

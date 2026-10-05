@@ -20,13 +20,13 @@ void main() {
 
   setUp(() async => LocalDatabase.instance.resetForTests());
 
-  test('fresh schema is v29 with append-only ledger and FK integrity',
+  test('fresh schema is v30 with append-only ledger and FK integrity',
       () async {
     final db = await LocalDatabase.instance.database;
     final version = Sqflite.firstIntValue(
       await db.rawQuery('PRAGMA user_version'),
     );
-    expect(version, 29);
+    expect(version, 30);
 
     final auditColumns = await db.rawQuery('PRAGMA table_info(audit_log)');
     expect(
@@ -41,6 +41,18 @@ void main() {
         'created_at',
       ]),
     );
+    for (final table in [
+      'marketplace_vendors',
+      'purchase_orders',
+      'sales_invoices',
+      'sales_return_lines',
+    ]) {
+      expect(
+        (await db.rawQuery('PRAGMA table_info($table)'))
+            .map((column) => column['name']),
+        contains('party_id'),
+      );
+    }
     final foreignKeyIssues = await db.rawQuery('PRAGMA foreign_key_check');
     expect(foreignKeyIssues, isEmpty);
 
@@ -228,9 +240,36 @@ void main() {
         await database.execute(
           'CREATE TABLE voucher_lines (id INTEGER PRIMARY KEY, voucher_id INTEGER NOT NULL)',
         );
+        await database.execute('''
+          CREATE TABLE parties (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            type TEXT NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1
+          )
+        ''');
         await database.execute(
-          'CREATE TABLE parties (id INTEGER PRIMARY KEY, name TEXT NOT NULL)',
+          'CREATE TABLE marketplace_vendors (id INTEGER PRIMARY KEY, name TEXT NOT NULL)',
         );
+        await database.execute('''
+          CREATE TABLE purchase_orders (
+            number TEXT PRIMARY KEY,
+            vendor_id INTEGER,
+            vendor_name TEXT NOT NULL
+          )
+        ''');
+        await database.execute('''
+          CREATE TABLE sales_invoices (
+            number TEXT PRIMARY KEY,
+            customer_name TEXT NOT NULL
+          )
+        ''');
+        await database.execute('''
+          CREATE TABLE sales_return_lines (
+            id INTEGER PRIMARY KEY,
+            invoice_number TEXT NOT NULL
+          )
+        ''');
         await database.execute(
           'CREATE TABLE company_profile (id INTEGER PRIMARY KEY, name TEXT NOT NULL)',
         );
@@ -241,6 +280,41 @@ void main() {
               role TEXT NOT NULL DEFAULT 'admin'
             )
           ''');
+        await database.insert('parties', {
+          'name': 'عميل قديم',
+          'type': 'customer',
+        });
+        await database.insert('parties', {
+          'name': 'مورد قديم',
+          'type': 'supplier',
+        });
+        for (var index = 0; index < 2; index++) {
+          await database.insert('parties', {
+            'name': 'عميل مكرر',
+            'type': 'customer',
+          });
+        }
+        await database.insert('marketplace_vendors', {
+          'id': 1,
+          'name': 'مورد قديم',
+        });
+        await database.insert('purchase_orders', {
+          'number': 'PO-LEGACY',
+          'vendor_id': 1,
+          'vendor_name': 'مورد قديم',
+        });
+        await database.insert('sales_invoices', {
+          'number': 'SALE-LEGACY',
+          'customer_name': 'عميل قديم',
+        });
+        await database.insert('sales_invoices', {
+          'number': 'SALE-AMBIGUOUS',
+          'customer_name': 'عميل مكرر',
+        });
+        await database.insert('sales_return_lines', {
+          'id': 1,
+          'invoice_number': 'SALE-LEGACY',
+        });
         await database.insert('audit_log', {
           'created_at': '2026-10-01T12:00:00.000Z',
           'action': 'legacy_event',
@@ -250,7 +324,7 @@ void main() {
     );
     try {
       await LocalDatabaseSchema.upgrade(db, 27);
-      await db.execute('PRAGMA user_version = 29');
+      await db.execute('PRAGMA user_version = 30');
       final legacy = (await db.query(
         'audit_log',
         where: 'action = ?',
@@ -264,7 +338,45 @@ void main() {
       expect(legacy['result'], 'legacy/unknown');
       expect(
         Sqflite.firstIntValue(await db.rawQuery('PRAGMA user_version')),
-        29,
+        30,
+      );
+      final customerParty = (await db.query(
+        'parties',
+        where: 'type = ? AND name = ?',
+        whereArgs: ['customer', 'عميل قديم'],
+        limit: 1,
+      ))
+          .single;
+      final supplierParty = (await db.query(
+        'parties',
+        where: 'type = ? AND name = ?',
+        whereArgs: ['supplier', 'مورد قديم'],
+        limit: 1,
+      ))
+          .single;
+      expect(
+        (await db.query('sales_invoices',
+                where: 'number = ?', whereArgs: ['SALE-LEGACY']))
+            .single['party_id'],
+        customerParty['id'],
+      );
+      expect(
+        (await db.query('sales_invoices',
+                where: 'number = ?', whereArgs: ['SALE-AMBIGUOUS']))
+            .single['party_id'],
+        isNull,
+      );
+      expect(
+        (await db.query('sales_return_lines')).single['party_id'],
+        customerParty['id'],
+      );
+      expect(
+        (await db.query('marketplace_vendors')).single['party_id'],
+        supplierParty['id'],
+      );
+      expect(
+        (await db.query('purchase_orders')).single['party_id'],
+        supplierParty['id'],
       );
 
       await db.insert('accounts', {'code': 'AFTER-MIGRATION', 'name': 'تجربة'});
