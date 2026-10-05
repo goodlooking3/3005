@@ -44,7 +44,7 @@ class LocalDatabase {
     _db = await factory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 27,
+        version: 28,
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON');
           if (!kIsWeb) {
@@ -65,7 +65,36 @@ class LocalDatabase {
   Future<int> insert(Remittance item) =>
       write((db) => db.insert('remittances', item.toMap()));
   Future<T> write<T>(Future<T> Function(Database db) operation) {
-    final next = _writeTail.then((_) async => operation(await database));
+    final next = _writeTail.then((_) async {
+      final db = await database;
+      try {
+        return await operation(db);
+      } catch (error) {
+        try {
+          final context = await db.query(
+            'audit_context',
+            columns: ['actor_id', 'session_id'],
+            where: 'id = ?',
+            whereArgs: [1],
+            limit: 1,
+          );
+          final current = context.isEmpty ? null : context.single;
+          await db.insert('audit_log', {
+            'created_at': DateTime.now().toUtc().toIso8601String(),
+            'actor_id': current?['actor_id'] ?? 'local-owner',
+            'session_id': current?['session_id'],
+            'entity_type': 'application',
+            'entity_id': null,
+            'action': 'db.write',
+            'result': 'failure',
+            'details': 'operation failed (${error.runtimeType})',
+          });
+        } catch (_) {
+          // Preserve the original write failure if the audit sink is unavailable.
+        }
+        rethrow;
+      }
+    });
     _writeTail = next.then<void>((_) {}, onError: (_) {});
     return next;
   }

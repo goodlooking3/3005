@@ -187,3 +187,126 @@ Future<void> _addCurrencyValuationColumns(Database db) async {
     await _addColumnIfMissing(db, column.$1, column.$2, column.$3);
   }
 }
+
+Future<void> _ensureAuditTrail(Database db) async {
+  for (final column in [
+    ('actor_id', "TEXT NOT NULL DEFAULT 'legacy/unknown'"),
+    ('session_id', 'TEXT'),
+    ('entity_type', "TEXT NOT NULL DEFAULT 'legacy/unknown'"),
+    ('entity_id', 'TEXT'),
+    ('result', "TEXT NOT NULL DEFAULT 'legacy/unknown'"),
+  ]) {
+    await _addColumnIfMissing(db, 'audit_log', column.$1, column.$2);
+  }
+
+  await db.execute('''
+    CREATE TABLE IF NOT EXISTS audit_context (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      actor_id TEXT NOT NULL,
+      session_id TEXT
+    )
+  ''');
+  await db.insert(
+    'audit_context',
+    {'id': 1, 'actor_id': 'local-owner'},
+    conflictAlgorithm: ConflictAlgorithm.ignore,
+  );
+  await db.execute(
+    'CREATE INDEX IF NOT EXISTS idx_audit_log_actor_created ON audit_log(actor_id, created_at DESC)',
+  );
+  await db.execute(
+    'CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity_type, entity_id, created_at DESC)',
+  );
+  await _createAuditLogGuards(db);
+  await _createSensitiveChangeAuditTriggers(db);
+}
+
+Future<void> _createAuditLogGuards(Database db) async {
+  await db.execute('''
+    CREATE TRIGGER IF NOT EXISTS audit_log_no_update
+    BEFORE UPDATE ON audit_log
+    BEGIN
+      SELECT RAISE(ABORT, 'audit_log is append-only');
+    END
+  ''');
+  await db.execute('''
+    CREATE TRIGGER IF NOT EXISTS audit_log_no_delete
+    BEFORE DELETE ON audit_log
+    BEGIN
+      SELECT RAISE(ABORT, 'audit_log is append-only');
+    END
+  ''');
+}
+
+Future<void> _createSensitiveChangeAuditTriggers(Database db) async {
+  const entityKeys = <String, String>{
+    'accounts': 'id',
+    'account_currencies': 'account_id',
+    'currencies': 'code',
+    'exchange_rates': 'id',
+    'parties': 'id',
+    'company_profile': 'id',
+    'user_profile': 'id',
+    'vouchers': 'id',
+    'voucher_lines': 'id',
+    'journal_entries': 'id',
+    'journal_lines': 'id',
+    'connector_configs': 'id',
+    'incoming_messages': 'id',
+    'bank_transactions': 'id',
+    'wallets': 'id',
+    'wallet_accounts': 'id',
+    'wallet_transactions': 'id',
+    'marketplace_vendors': 'id',
+    'marketplace_products': 'id',
+    'purchase_orders': 'id',
+    'purchase_order_lines': 'id',
+    'inventory_items': 'id',
+    'inventory_movements': 'id',
+    'sales_invoices': 'id',
+    'sales_invoice_lines': 'id',
+    'sales_return_lines': 'id',
+    'remittances': 'id',
+    'sync_queue': 'id',
+  };
+  final existingRows = await db.rawQuery(
+    "SELECT name FROM sqlite_master WHERE type = 'table'",
+  );
+  final existingTables =
+      existingRows.map((row) => row['name'] as String).toSet();
+
+  for (final entry in entityKeys.entries) {
+    final table = entry.key;
+    if (!existingTables.contains(table)) continue;
+    final columns = await db.rawQuery('PRAGMA table_info($table)');
+    if (!columns.any((row) => row['name'] == entry.value)) continue;
+    final newKey = table == 'account_currencies'
+        ? "CAST(NEW.account_id AS TEXT) || ':' || NEW.currency"
+        : 'CAST(NEW.${entry.value} AS TEXT)';
+    final oldKey = table == 'account_currencies'
+        ? "CAST(OLD.account_id AS TEXT) || ':' || OLD.currency"
+        : 'CAST(OLD.${entry.value} AS TEXT)';
+
+    for (final operation in ['insert', 'update', 'delete']) {
+      final isDelete = operation == 'delete';
+      final key = isDelete ? oldKey : newKey;
+      final triggerName = 'audit_${table}_$operation';
+      final trigger = '''
+        CREATE TRIGGER IF NOT EXISTS $triggerName
+        AFTER ${operation.toUpperCase()} ON $table
+        BEGIN
+          INSERT INTO audit_log
+            (created_at, actor_id, session_id, entity_type, entity_id, action, result, details)
+          VALUES (
+            strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+            COALESCE((SELECT actor_id FROM audit_context WHERE id = 1), 'local-owner'),
+            (SELECT session_id FROM audit_context WHERE id = 1),
+            '$table', $key, 'db.$operation', 'success',
+            'database-trigger'
+          );
+        END
+      ''';
+      await db.execute(trigger);
+    }
+  }
+}

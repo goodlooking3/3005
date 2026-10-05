@@ -203,7 +203,7 @@ class _LoginPageState extends State<LoginPage> {
       );
       if (!mounted) return;
       if (ok) {
-        await widget.auth.setRemembered(rememberMe);
+        await widget.auth.setRemembered(rememberMe, keepSession: true);
         if (!mounted) return;
         Navigator.of(
           context,

@@ -4,6 +4,8 @@ import 'package:cryptography/cryptography.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../data/audit_repository.dart';
+
 class AuthService {
   static const _minimumPasswordLength = 8;
   static const _configuredKey = 'wasel_auth_configured';
@@ -38,6 +40,12 @@ class AuthService {
     await prefs.setString(_displayNameKey,
         displayName.trim().isEmpty ? 'المستخدم' : displayName.trim());
     await prefs.setBool(_configuredKey, true);
+    await AuditRepository.instance.record(
+      action: 'auth.create_local_account',
+      entityType: 'local_account',
+      entityId: 'local-owner',
+      details: 'تم إنشاء حساب محلي دون تسجيل كلمة المرور في سجل التدقيق',
+    );
   }
 
   Future<String> displayName() async =>
@@ -53,15 +61,33 @@ class AuthService {
     final identifier = email.trim();
     final emailMatches = identifier.isNotEmpty &&
         prefs.getString(_emailKey) == identifier.toLowerCase();
-    final phoneMatches = phone.trim().isNotEmpty &&
-        prefs.getString(_phoneKey) == phone.trim();
-    if (!(emailMatches || phoneMatches)) return false;
-    return _matchesAndMigrate(prefs, password);
+    final phoneMatches =
+        phone.trim().isNotEmpty && prefs.getString(_phoneKey) == phone.trim();
+    final accepted = (emailMatches || phoneMatches) &&
+        await _matchesAndMigrate(prefs, password);
+    if (accepted) await AuditRepository.instance.beginLocalOwnerSession();
+    await AuditRepository.instance.record(
+      action: 'auth.sign_in',
+      entityType: 'local_account',
+      entityId: 'local-owner',
+      result: accepted ? 'success' : 'failure',
+      details: 'password authentication',
+    );
+    return accepted;
   }
 
-  Future<void> setRemembered(bool value) async {
+  Future<void> setRemembered(bool value, {bool keepSession = false}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_rememberKey, value);
+    if (!value && !keepSession) {
+      await AuditRepository.instance.record(
+        action: 'auth.sign_out',
+        entityType: 'local_account',
+        entityId: 'local-owner',
+        details: 'local session ended',
+      );
+      await AuditRepository.instance.endLocalOwnerSession();
+    }
   }
 
   Future<bool> remembered() async =>
@@ -71,10 +97,34 @@ class AuthService {
     required String currentPassword,
     required String newPassword,
   }) async {
-    if (newPassword.length < _minimumPasswordLength) return false;
+    if (newPassword.length < _minimumPasswordLength) {
+      await AuditRepository.instance.record(
+        action: 'auth.change_password',
+        entityType: 'local_account',
+        entityId: 'local-owner',
+        result: 'failure',
+        details: 'new password did not meet minimum length',
+      );
+      return false;
+    }
     final prefs = await SharedPreferences.getInstance();
-    if (!await _matchesAndMigrate(prefs, currentPassword)) return false;
+    if (!await _matchesAndMigrate(prefs, currentPassword)) {
+      await AuditRepository.instance.record(
+        action: 'auth.change_password',
+        entityType: 'local_account',
+        entityId: 'local-owner',
+        result: 'failure',
+        details: 'current password verification failed',
+      );
+      return false;
+    }
     await prefs.setString(_passwordKey, await _passwordHash(newPassword));
+    await AuditRepository.instance.record(
+      action: 'auth.change_password',
+      entityType: 'local_account',
+      entityId: 'local-owner',
+      details: 'password changed; secret omitted',
+    );
     return true;
   }
 
@@ -108,11 +158,20 @@ class AuthService {
   }
 
   Future<bool> authenticateWithBiometrics() async {
+    var accepted = false;
     try {
-      return await _localAuth.authenticate(
+      accepted = await _localAuth.authenticate(
           localizedReason: 'افتح مساحة واصل الآمنة');
     } catch (_) {
-      return false;
+      accepted = false;
     }
+    if (accepted) await AuditRepository.instance.beginLocalOwnerSession();
+    await AuditRepository.instance.record(
+      action: 'auth.biometric_sign_in',
+      entityType: 'local_account',
+      entityId: 'local-owner',
+      result: accepted ? 'success' : 'failure',
+    );
+    return accepted;
   }
 }

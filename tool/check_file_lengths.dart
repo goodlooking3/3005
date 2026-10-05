@@ -8,7 +8,6 @@ const frozenLegacy = <String>{
   // share one StatefulWidget state and need a dedicated behavior-preserving
   // extraction pass before this exception can be removed.
   'lib/app_shell_part.dart',
-  'lib/data/accounting_repository.dart',
 };
 
 void main() {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/accounting.dart';
+import '../../../../data/accounting_repository.dart';
 import '../providers/wallet_provider.dart';
 import 'wallet_account_editor_dialog.dart';
 import '../widgets/transaction_filters_widget.dart';
@@ -97,7 +98,8 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('أضف محفظتك الأولى لعرض الأرصدة والحركات الموحدة.'),
+                            const Text(
+                                'أضف محفظتك الأولى لعرض الأرصدة والحركات الموحدة.'),
                             const SizedBox(height: 12),
                             FilledButton.icon(
                               onPressed: _addWallet,
@@ -171,7 +173,8 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
       );
       if (saved == true && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تم ربط الحسابات والعملات المحددة بالمحفظة')),
+          const SnackBar(
+              content: Text('تم ربط الحسابات والعملات المحددة بالمحفظة')),
         );
       }
     } catch (_) {
@@ -226,35 +229,57 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: name, decoration: const InputDecoration(labelText: 'اسم المحفظة')),
-            TextField(controller: provider, decoration: const InputDecoration(labelText: 'مزود الخدمة')),
-            TextField(controller: account, decoration: const InputDecoration(labelText: 'اسم الحساب داخل المحفظة')),
+            TextField(
+                controller: name,
+                decoration: const InputDecoration(labelText: 'اسم المحفظة')),
+            TextField(
+                controller: provider,
+                decoration: const InputDecoration(labelText: 'مزود الخدمة')),
+            TextField(
+                controller: account,
+                decoration: const InputDecoration(
+                    labelText: 'اسم الحساب داخل المحفظة')),
             DropdownButtonFormField<String>(
               initialValue: currency,
               decoration: const InputDecoration(labelText: 'العملة'),
               items: const ['SAR', 'USD', 'YER']
-                  .map((item) => DropdownMenuItem(value: item, child: Text(item)))
+                  .map((item) =>
+                      DropdownMenuItem(value: item, child: Text(item)))
                   .toList(),
               onChanged: (value) => currency = value ?? 'SAR',
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء')),
           FilledButton(
             onPressed: () async {
-              if (name.text.trim().isEmpty || provider.text.trim().isEmpty || account.text.trim().isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('أكمل بيانات المحفظة والحساب')));
+              if (name.text.trim().isEmpty ||
+                  provider.text.trim().isEmpty ||
+                  account.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('أكمل بيانات المحفظة والحساب')));
                 return;
               }
-              final walletId = 'wallet-${DateTime.now().microsecondsSinceEpoch}';
+              final walletId =
+                  'wallet-${DateTime.now().microsecondsSinceEpoch}';
               await widget.provider.addWallet(
                 Wallet(
                   id: walletId,
                   name: name.text.trim(),
-                  provider: WalletProviderConfig(id: provider.text.trim().toLowerCase().replaceAll(' ', '_'), name: provider.text.trim()),
+                  provider: WalletProviderConfig(
+                      id: provider.text
+                          .trim()
+                          .toLowerCase()
+                          .replaceAll(' ', '_'),
+                      name: provider.text.trim()),
                 ),
-                account: WalletAccount(walletId: walletId, name: account.text.trim(), currency: currency),
+                account: WalletAccount(
+                    walletId: walletId,
+                    name: account.text.trim(),
+                    currency: currency),
               );
               if (dialogContext.mounted) Navigator.pop(dialogContext);
             },
