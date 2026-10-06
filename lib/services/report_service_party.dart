@@ -4,6 +4,7 @@ class PartyAgingRow {
   final int partyId;
   final String partyName;
   final String currency;
+  final double unaged;
   final double notDue;
   final double days0To30;
   final double days31To60;
@@ -15,6 +16,7 @@ class PartyAgingRow {
     required this.partyId,
     required this.partyName,
     required this.currency,
+    required this.unaged,
     required this.notDue,
     required this.days0To30,
     required this.days31To60,
@@ -24,7 +26,7 @@ class PartyAgingRow {
   });
 
   double get openItems =>
-      notDue + days0To30 + days31To60 + days61To90 + daysOver90;
+      unaged + notDue + days0To30 + days31To60 + days61To90 + daysOver90;
   double get netBalance => openItems - unappliedCredit;
 }
 
@@ -100,6 +102,8 @@ extension ReportServicePartyReports on ReportService {
     await AccountingAuthorization.instance
         .requireRead(db, AccountingPermission.viewLedger);
     final normalizedCurrency = currency?.trim().toUpperCase();
+    final agingBasis =
+        (await const AccountingPolicyRepository().load()).agingDateBasis;
     final cutoff = _reportDayAfter(asOf).toIso8601String();
     final args = <Object?>[partyType, partyType, cutoff];
     var extra = '';
@@ -143,6 +147,7 @@ extension ReportServicePartyReports on ReportService {
       accumulator.apply(
         DateTime.parse(row['entry_date']! as String),
         signed,
+        basis: agingBasis,
         dueDate: row['due_date'] == null
             ? null
             : DateTime.parse(row['due_date']! as String),
@@ -278,13 +283,19 @@ class _AgingAccumulator {
     required this.currency,
   });
 
-  void apply(DateTime date, double amount, {DateTime? dueDate}) {
+  void apply(DateTime date, double amount,
+      {DateTime? dueDate, required AgingDateBasis basis}) {
     if (amount > 0) {
       final applied = amount < _credit ? amount : _credit;
       _credit -= applied;
       final remainder = amount - applied;
       if (remainder > 0.000001) {
-        _items.add(_OpenAgingItem(dueDate ?? date, remainder));
+        final agingDate = switch (basis) {
+          AgingDateBasis.dueDateWhenAvailable => dueDate ?? date,
+          AgingDateBasis.postingDateOnly => date,
+          AgingDateBasis.dueDateOnly => dueDate,
+        };
+        _items.add(_OpenAgingItem(agingDate, remainder));
       }
       return;
     }
@@ -300,6 +311,7 @@ class _AgingAccumulator {
   }
 
   PartyAgingRow finish(DateTime asOf) {
+    var unaged = 0.0;
     var notDue = 0.0;
     var days0To30 = 0.0;
     var days31To60 = 0.0;
@@ -308,8 +320,12 @@ class _AgingAccumulator {
     final cutoff = DateTime.utc(asOf.year, asOf.month, asOf.day);
     for (var index = _nextOpen; index < _items.length; index++) {
       final item = _items[index];
+      if (item.date == null) {
+        unaged += item.amount;
+        continue;
+      }
       final posted =
-          DateTime.utc(item.date.year, item.date.month, item.date.day);
+          DateTime.utc(item.date!.year, item.date!.month, item.date!.day);
       final days = cutoff.difference(posted).inDays;
       if (days < 0) {
         notDue += item.amount;
@@ -327,6 +343,7 @@ class _AgingAccumulator {
       partyId: partyId,
       partyName: partyName,
       currency: currency,
+      unaged: unaged,
       notDue: notDue,
       days0To30: days0To30,
       days31To60: days31To60,
@@ -338,7 +355,7 @@ class _AgingAccumulator {
 }
 
 class _OpenAgingItem {
-  final DateTime date;
+  final DateTime? date;
   double amount;
 
   _OpenAgingItem(this.date, this.amount);

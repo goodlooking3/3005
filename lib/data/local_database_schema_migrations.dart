@@ -269,6 +269,7 @@ Future<void> _createSensitiveChangeAuditTriggers(Database db) async {
     'remittances': 'id',
     'sync_queue': 'id',
     'accounting_periods': 'id',
+    'accounting_policy_settings': 'policy_key',
   };
   final existingRows = await db.rawQuery(
     "SELECT name FROM sqlite_master WHERE type = 'table'",

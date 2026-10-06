@@ -404,21 +404,55 @@ extension AccountingRepositoryAccounts on AccountingRepository {
 
   Future<void> saveCompany(CompanyProfile profile) =>
       LocalDatabase.instance.write((db) async {
-        await AccountingAuthorization.instance
-            .require(db, AccountingPermission.manageCompanySettings);
-        await db.insert(
+        await db.transaction((txn) async {
+          await AccountingAuthorization.instance
+              .require(txn, AccountingPermission.manageCompanySettings);
+          final current = await txn.query(
             'company_profile',
-            {
-              'id': 1,
-              'name': profile.name,
-              'legal_name': profile.legalName,
-              'tax_number': profile.taxNumber,
-              'phone': profile.phone,
-              'email': profile.email,
-              'address': profile.address,
-              'base_currency': profile.baseCurrency,
-            },
-            conflictAlgorithm: ConflictAlgorithm.replace);
+            columns: ['base_currency'],
+            where: 'id = ?',
+            whereArgs: [1],
+            limit: 1,
+          );
+          final currentCurrency = current.isEmpty
+              ? 'SAR'
+              : (current.single['base_currency'] as String).toUpperCase();
+          final normalizedCurrency = profile.baseCurrency.trim().toUpperCase();
+          final activeCurrency = await txn.query(
+            'currencies',
+            columns: ['code'],
+            where: 'code = ? AND active = 1',
+            whereArgs: [normalizedCurrency],
+            limit: 1,
+          );
+          if (activeCurrency.isEmpty && currentCurrency != normalizedCurrency) {
+            throw StateError('اختر عملة محلية نشطة من قائمة العملات');
+          }
+          if (currentCurrency != normalizedCurrency) {
+            final posted = Sqflite.firstIntValue(
+                  await txn.rawQuery('SELECT COUNT(*) FROM journal_entries'),
+                ) ??
+                0;
+            if (posted > 0) {
+              throw StateError(
+                'لا يمكن تغيير العملة الأساسية بعد ترحيل قيود؛ يلزم إجراء تقييم وتحويل افتتاحي معتمد',
+              );
+            }
+          }
+          await txn.insert(
+              'company_profile',
+              {
+                'id': 1,
+                'name': profile.name,
+                'legal_name': profile.legalName,
+                'tax_number': profile.taxNumber,
+                'phone': profile.phone,
+                'email': profile.email,
+                'address': profile.address,
+                'base_currency': normalizedCurrency,
+              },
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        });
       });
   Future<CompanyProfile?> company() async {
     final db = await _db;

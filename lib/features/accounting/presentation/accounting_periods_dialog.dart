@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/user_facing_errors.dart';
 import '../../../data/accounting_authorization.dart';
+import '../../../data/accounting_policy_repository.dart';
 import '../../../data/accounting_period_repository.dart';
 import '../../../data/local_database.dart';
 
@@ -59,13 +60,20 @@ class _AccountingPeriodsDialogState extends State<AccountingPeriodsDialog> {
 
   Future<void> _create() async {
     final now = DateTime.now();
+    final policy = await const AccountingPolicyRepository().load();
+    if (!mounted) return;
+    final fiscalStartYear =
+        now.month >= policy.fiscalYearStartMonth ? now.year : now.year - 1;
+    final fiscalStart = DateTime(fiscalStartYear, policy.fiscalYearStartMonth);
+    final fiscalEnd = DateTime(fiscalStartYear + 1, policy.fiscalYearStartMonth)
+        .subtract(const Duration(days: 1));
     final range = await showDateRangePicker(
       context: context,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100, 12, 31),
       initialDateRange: DateTimeRange(
-        start: DateTime(now.year, 1, 1),
-        end: DateTime(now.year, 12, 31),
+        start: fiscalStart,
+        end: fiscalEnd,
       ),
       helpText: 'حدد نطاق الفترة المالية',
     );

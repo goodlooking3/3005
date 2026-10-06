@@ -477,6 +477,23 @@ class _HomeShellState extends State<HomeShell> {
           ),
           Card(
             child: ListTile(
+              onTap: () => showDialog<bool>(
+                context: context,
+                builder: (_) => const AccountingPolicySettingsDialog(),
+              ),
+              leading: const Icon(Icons.tune_rounded, color: Color(0xFF315CFF)),
+              title: const Text(
+                'السياسات المحاسبية العامة',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: const Text(
+                'إطار التقارير وأساس أعمار الذمم وبداية السنة المالية',
+              ),
+              trailing: const Icon(Icons.chevron_left),
+            ),
+          ),
+          Card(
+            child: ListTile(
               onTap: _showCompanyDialog,
               leading: const Icon(
                 Icons.business_outlined,

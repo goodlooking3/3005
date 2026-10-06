@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:wasel/data/accounting_policy_repository.dart';
 import 'package:wasel/data/local_database.dart';
 import 'package:wasel/services/report_service.dart';
 
@@ -167,6 +168,29 @@ void main() {
     expect(customer.days61To90, 100);
     expect(customer.days0To30, 50);
     expect(customer.openItems, 175);
+
+    await const AccountingPolicyRepository().save(
+      const AccountingPolicySettings(
+        agingDateBasis: AgingDateBasis.dueDateOnly,
+      ),
+    );
+    final contractualOnly =
+        await ReportService().receivablesAging(asOf: DateTime.utc(2026, 10, 5));
+    final contractualCustomer = contractualOnly.rows.single;
+    expect(contractualCustomer.unaged, 50);
+    expect(contractualCustomer.notDue, 25);
+    expect(contractualCustomer.days61To90, 100);
+    expect(contractualCustomer.days0To30, 0);
+    expect(contractualCustomer.openItems, 175);
+
+    await const AccountingPolicyRepository().save(
+      const AccountingPolicySettings(
+        agingDateBasis: AgingDateBasis.postingDateOnly,
+      ),
+    );
+    final postingDates =
+        await ReportService().receivablesAging(asOf: DateTime.utc(2026, 10, 5));
+    expect(postingDates.rows.single.daysOver90, 100);
   });
 
   test(

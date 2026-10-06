@@ -20,13 +20,22 @@ void main() {
 
   setUp(() async => LocalDatabase.instance.resetForTests());
 
-  test('fresh schema is v31 with append-only ledger and FK integrity',
+  test('fresh schema is v32 with append-only ledger and FK integrity',
       () async {
     final db = await LocalDatabase.instance.database;
     final version = Sqflite.firstIntValue(
       await db.rawQuery('PRAGMA user_version'),
     );
-    expect(version, 31);
+    expect(version, 32);
+    final policies = await db.query('accounting_policy_settings');
+    expect(
+      policies.map((row) => row['policy_key']),
+      containsAll([
+        'reporting_framework',
+        'aging_date_basis',
+        'fiscal_year_start_month',
+      ]),
+    );
 
     final journalColumns =
         await db.rawQuery('PRAGMA table_info(journal_entries)');
@@ -329,7 +338,7 @@ void main() {
     );
     try {
       await LocalDatabaseSchema.upgrade(db, 27);
-      await db.execute('PRAGMA user_version = 31');
+      await db.execute('PRAGMA user_version = 32');
       final legacy = (await db.query(
         'audit_log',
         where: 'action = ?',
@@ -343,7 +352,20 @@ void main() {
       expect(legacy['result'], 'legacy/unknown');
       expect(
         Sqflite.firstIntValue(await db.rawQuery('PRAGMA user_version')),
-        31,
+        32,
+      );
+      expect(await db.query('accounting_policy_settings'), isNotEmpty);
+      await db.update(
+        'accounting_policy_settings',
+        {'policy_value': 'ifrs', 'updated_at': '2026-10-07T00:00:00Z'},
+        where: 'policy_key = ?',
+        whereArgs: ['reporting_framework'],
+      );
+      expect(
+        await db.query('audit_log',
+            where: 'entity_type = ? AND action = ?',
+            whereArgs: ['accounting_policy_settings', 'db.update']),
+        isNotEmpty,
       );
       final journalColumns =
           await db.rawQuery('PRAGMA table_info(journal_entries)');

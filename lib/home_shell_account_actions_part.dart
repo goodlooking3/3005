@@ -59,6 +59,12 @@ extension _HomeShellAccountActions on _HomeShellState {
 
   Future<void> _showCompanyDialog() async {
     final current = await accounting.company();
+    final availableCurrencies = await CurrencyRepository().activeCurrencies();
+    final baseCurrency = current?.baseCurrency ?? 'SAR';
+    final currencyCodes = availableCurrencies.map((item) => item.code).toSet()
+      ..add(baseCurrency);
+    var selectedCurrency = baseCurrency;
+    String? errorMessage;
     final name = TextEditingController(text: current?.name);
     final legal = TextEditingController(text: current?.legalName);
     final tax = TextEditingController(text: current?.taxNumber);
@@ -67,58 +73,105 @@ extension _HomeShellAccountActions on _HomeShellState {
     if (!mounted) return;
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('بيانات الشركة'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: name,
-                decoration: const InputDecoration(labelText: 'اسم الشركة'),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('بيانات الشركة'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: name,
+                    decoration: const InputDecoration(labelText: 'اسم الشركة'),
+                  ),
+                  TextField(
+                    controller: legal,
+                    decoration:
+                        const InputDecoration(labelText: 'الاسم القانوني'),
+                  ),
+                  TextField(
+                    controller: tax,
+                    decoration:
+                        const InputDecoration(labelText: 'الرقم الضريبي'),
+                  ),
+                  DropdownButtonFormField<String>(
+                    value: selectedCurrency,
+                    decoration:
+                        const InputDecoration(labelText: 'العملة المحلية'),
+                    items: currencyCodes.map((code) {
+                      final option = availableCurrencies.firstWhere(
+                        (item) => item.code == code,
+                        orElse: () => CurrencyOption(
+                          code: code,
+                          name: 'غير نشطة',
+                          symbol: '',
+                        ),
+                      );
+                      final label = '$code — ${option.name}';
+                      return DropdownMenuItem(value: code, child: Text(label));
+                    }).toList(),
+                    onChanged: (value) => setDialogState(
+                        () => selectedCurrency = value ?? selectedCurrency),
+                  ),
+                  const Text(
+                    'لا يمكن تغيير العملة بعد ترحيل قيود إلا عبر تحويل/تقييم افتتاحي معتمد.',
+                  ),
+                  TextField(
+                    controller: phone,
+                    decoration: const InputDecoration(labelText: 'الهاتف'),
+                  ),
+                  TextField(
+                    controller: address,
+                    decoration: const InputDecoration(labelText: 'العنوان'),
+                  ),
+                  if (errorMessage != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(errorMessage!),
+                    ),
+                ],
               ),
-              TextField(
-                controller: legal,
-                decoration: const InputDecoration(labelText: 'الاسم القانوني'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('إلغاء'),
               ),
-              TextField(
-                controller: tax,
-                decoration: const InputDecoration(labelText: 'الرقم الضريبي'),
-              ),
-              TextField(
-                controller: phone,
-                decoration: const InputDecoration(labelText: 'الهاتف'),
-              ),
-              TextField(
-                controller: address,
-                decoration: const InputDecoration(labelText: 'العنوان'),
+              FilledButton(
+                onPressed: () async {
+                  if (name.text.trim().isEmpty) {
+                    setDialogState(() => errorMessage = 'أدخل اسم الشركة');
+                    return;
+                  }
+                  try {
+                    await accounting.saveCompany(
+                      CompanyProfile(
+                        name: name.text,
+                        legalName: legal.text,
+                        taxNumber: tax.text,
+                        phone: phone.text,
+                        address: address.text,
+                        baseCurrency: selectedCurrency,
+                      ),
+                    );
+                    await accounting.log(
+                      'update_company_profile',
+                      'company details and base currency updated',
+                    );
+                    if (dialogContext.mounted) Navigator.pop(dialogContext);
+                  } catch (error) {
+                    setDialogState(() => errorMessage = userFacingError(
+                          error,
+                          fallback: 'تعذر حفظ بيانات الشركة',
+                        ));
+                  }
+                },
+                child: const Text('حفظ البيانات'),
               ),
             ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('إلغاء'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              if (name.text.trim().isEmpty) return;
-              await accounting.saveCompany(
-                CompanyProfile(
-                  name: name.text,
-                  legalName: legal.text,
-                  taxNumber: tax.text,
-                  phone: phone.text,
-                  address: address.text,
-                ),
-              );
-              await accounting.log('update_company_profile', name.text);
-              if (dialogContext.mounted) Navigator.pop(dialogContext);
-            },
-            child: const Text('حفظ البيانات'),
-          ),
-        ],
+          );
+        },
       ),
     );
   }

@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../data/accounting_authorization.dart';
+import '../data/accounting_policy_repository.dart';
 import '../data/currency_policy.dart';
 import '../data/local_database.dart';
 import '../data/accounting_repository.dart';
