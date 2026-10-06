@@ -31,7 +31,7 @@
 - اختبارات خدمة مضافة/محدثة: توازن المركز المالي وصافي القيود العكسية، FIFO للأعمار وتحديد الرصيد غير المنسوب، تفضيل الاستحقاق اليدوي مع الرجوع للقيد، فصل المستحق مستقبلًا، وترحيل المخطط إلى v31 دون backfill تخميني، ورفض ميزانية أساس عند غياب تقييم افتتاحي أجنبي.
 - اختبار Widget مضاف: عرض شاشة التقارير بعرض 390px والتحقق من وجود التبويبات دون استثناءات.
 - بعد إزالة وسيط API اختياري غير مستهلك من تقرير الأعمار، اجتازت الشجرة النهائية بوابات file-length/screen-binding/SQLite-singleton و`flutter analyze` (exit 0؛ 0 أخطاء، 5 تحذيرات خط أساس، 72 معلومة) و**107 اختبارات** وبناء `flutter build web --release`. فحص Wasm أظهر تحذيرات من تبعية `image-4.3.0` ولم يمنع Web release. لم يتجاوز أي ملف Dart عُدّل 500 سطر؛ أطول ملف معدل هو شاشة التقارير (466 سطراً). اجتاز `git diff --check` بعد تحديث التقرير وقبل الالتزام.
-- **استكمال 2026-10-06 (ترحيل v31):** اجتازت محلياً `flutter analyze --no-fatal-infos --no-fatal-warnings` (0 أخطاء، 5 تحذيرات خط أساس، 72 معلومة)، و**109 اختبارات**، وحواجز file-length/screen-binding/SQLite-singleton، و`git diff --check`، وبناء `flutter build web --release`. بقي فحص Wasm التحذيري متعلقًا بتبعية `image-4.3.0`؛ لم يمنع بناء Web.
+- **استكمال 2026-10-06 (ترحيل v31):** اجتازت محلياً `flutter analyze --no-fatal-infos --no-fatal-warnings` (0 أخطاء، 5 تحذيرات خط أساس، 72 معلومة)، و**109 اختبارات**، وحواجز file-length/screen-binding/SQLite-singleton، و`git diff --check`، وبناء `flutter build web --release`. اجتاز الالتزام `b9ed8fe3accd9bd55038eacb51f3e94459f50a98` تشغيل CI [`37516319485`](https://github.com/goodlooking3/3005/actions/runs/37516319485). بقي فحص Wasm التحذيري متعلقًا بتبعية `image-4.3.0`؛ لم يمنع بناء Web.
 
 ## الخطوة التالية
 
