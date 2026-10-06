@@ -338,7 +338,7 @@ class _AccountingReportsScreenState extends State<AccountingReportsScreen> {
         const Padding(
           padding: EdgeInsets.all(12),
           child: Text(
-              'الأعمار محسوبة من تاريخ القيد، لا من تاريخ استحقاق تعاقدي. تُعرض العملات منفصلة.'),
+              'تُحسب الأعمار من تاريخ الاستحقاق اليدوي عند إدخاله، وإلا من تاريخ القيد. الأرصدة بلا تاريخ تعاقدي لا تعني أنها متأخرة؛ وتُعرض العملات منفصلة.'),
         ),
         if (report.rows.isEmpty)
           const ListTile(
@@ -366,6 +366,7 @@ class _AccountingReportsScreenState extends State<AccountingReportsScreen> {
                         spacing: 8,
                         runSpacing: 4,
                         children: [
+                          _ageChip('غير مستحق', row.notDue),
                           _ageChip('0–30', row.days0To30),
                           _ageChip('31–60', row.days31To60),
                           _ageChip('61–90', row.days61To90),

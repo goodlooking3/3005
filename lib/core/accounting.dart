@@ -149,6 +149,7 @@ class Voucher {
   final double amount;
   final String currency;
   final DateTime date;
+  final DateTime? dueDate;
   final String? recipientName;
   final String? payerName;
   final int? debitAccountId;
@@ -162,6 +163,7 @@ class Voucher {
     required this.amount,
     required this.currency,
     required this.date,
+    this.dueDate,
     this.recipientName,
     this.payerName,
     this.debitAccountId,

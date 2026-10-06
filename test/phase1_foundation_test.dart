@@ -20,13 +20,18 @@ void main() {
 
   setUp(() async => LocalDatabase.instance.resetForTests());
 
-  test('fresh schema is v30 with append-only ledger and FK integrity',
+  test('fresh schema is v31 with append-only ledger and FK integrity',
       () async {
     final db = await LocalDatabase.instance.database;
     final version = Sqflite.firstIntValue(
       await db.rawQuery('PRAGMA user_version'),
     );
-    expect(version, 30);
+    expect(version, 31);
+
+    final journalColumns =
+        await db.rawQuery('PRAGMA table_info(journal_entries)');
+    expect(
+        journalColumns.map((column) => column['name']), contains('due_date'));
 
     final auditColumns = await db.rawQuery('PRAGMA table_info(audit_log)');
     expect(
@@ -324,7 +329,7 @@ void main() {
     );
     try {
       await LocalDatabaseSchema.upgrade(db, 27);
-      await db.execute('PRAGMA user_version = 30');
+      await db.execute('PRAGMA user_version = 31');
       final legacy = (await db.query(
         'audit_log',
         where: 'action = ?',
@@ -338,8 +343,11 @@ void main() {
       expect(legacy['result'], 'legacy/unknown');
       expect(
         Sqflite.firstIntValue(await db.rawQuery('PRAGMA user_version')),
-        30,
+        31,
       );
+      final journalColumns =
+          await db.rawQuery('PRAGMA table_info(journal_entries)');
+      expect(journalColumns.any((row) => row['name'] == 'due_date'), isTrue);
       final customerParty = (await db.query(
         'parties',
         where: 'type = ? AND name = ?',

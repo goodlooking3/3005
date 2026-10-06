@@ -118,5 +118,8 @@ class LocalDatabaseSchema {
     if (oldVersion < 28) await _ensureAuditTrail(db);
     if (oldVersion < 29) await _ensurePhase2AccountingControls(db);
     if (oldVersion < 30) await _ensureBusinessPartyLinks(db);
+    if (oldVersion < 31) {
+      await _addColumnIfMissing(db, 'journal_entries', 'due_date', 'TEXT');
+    }
   }
 }

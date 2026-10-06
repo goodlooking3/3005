@@ -72,6 +72,60 @@ void main() {
         partyId);
   });
 
+  test('voucher stores an optional manual due date on its journal entry',
+      () async {
+    final repository = AccountingRepository();
+    final customerAccountId = await repository.upsertAccount(const Account(
+      code: '1211',
+      name: 'ذمم العملاء',
+      type: 'عميل',
+      kind: AccountKind.customer,
+    ));
+    final revenueAccountId = await repository.upsertAccount(const Account(
+      code: '4100',
+      name: 'الإيرادات',
+      type: 'إيراد',
+      kind: AccountKind.revenue,
+    ));
+    final partyId = await repository.insertParty(Party(
+      accountId: customerAccountId,
+      name: 'عميل آجل',
+      type: 'customer',
+      currency: 'SAR',
+    ));
+    final dueDate = DateTime(2026, 10, 20);
+
+    await repository.insertVoucher(Voucher(
+      number: 'DUE-DATE-1',
+      type: VoucherType.journal,
+      description: 'فاتورة آجلة',
+      amount: 125,
+      currency: 'SAR',
+      date: DateTime(2026, 10, 6),
+      dueDate: dueDate,
+      lines: [
+        VoucherLine(
+          accountId: customerAccountId,
+          partyId: partyId,
+          accountName: 'ذمم العملاء',
+          debit: 125,
+          partyName: 'عميل آجل',
+        ),
+        VoucherLine(
+          accountId: revenueAccountId,
+          accountName: 'الإيرادات',
+          credit: 125,
+        ),
+      ],
+    ));
+
+    final db = await LocalDatabase.instance.database;
+    final row = (await db.query('journal_entries',
+            where: 'number = ?', whereArgs: ['DUE-DATE-1']))
+        .single;
+    expect(DateTime.parse(row['due_date']! as String), dueDate);
+  });
+
   test('new party requires a matching active analytical account', () async {
     final repository = AccountingRepository();
     final assetId = await repository.upsertAccount(const Account(

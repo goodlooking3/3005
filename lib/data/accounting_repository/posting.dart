@@ -297,6 +297,7 @@ extension AccountingRepositoryPosting on AccountingRepository {
     await txn.insert('journal_entries', {
       'voucher_id': id,
       'entry_date': voucher.date.toIso8601String(),
+      'due_date': voucher.dueDate?.toIso8601String(),
       'number': voucher.number.trim(),
       'description': voucher.description.trim(),
       'debit_total': baseDebitTotal,

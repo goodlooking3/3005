@@ -21,7 +21,7 @@ Future<void> _addWalletOperationMetadata(Database db) async {
 
 Future<void> _createJournalTable(Database db) async {
   await db.execute(
-    '''CREATE TABLE IF NOT EXISTS journal_entries (id INTEGER PRIMARY KEY AUTOINCREMENT, voucher_id INTEGER NOT NULL UNIQUE, entry_date TEXT NOT NULL, number TEXT NOT NULL, description TEXT NOT NULL, debit_total REAL NOT NULL, credit_total REAL NOT NULL, base_debit_total REAL, base_credit_total REAL, base_currency TEXT, exchange_rate REAL, source TEXT NOT NULL DEFAULT 'voucher', FOREIGN KEY(voucher_id) REFERENCES vouchers(id))''',
+    '''CREATE TABLE IF NOT EXISTS journal_entries (id INTEGER PRIMARY KEY AUTOINCREMENT, voucher_id INTEGER NOT NULL UNIQUE, entry_date TEXT NOT NULL, due_date TEXT, number TEXT NOT NULL, description TEXT NOT NULL, debit_total REAL NOT NULL, credit_total REAL NOT NULL, base_debit_total REAL, base_credit_total REAL, base_currency TEXT, exchange_rate REAL, source TEXT NOT NULL DEFAULT 'voucher', FOREIGN KEY(voucher_id) REFERENCES vouchers(id))''',
   );
   await _createJournalLinesTable(db);
   await _createJournalLineIntegrityGuards(db);

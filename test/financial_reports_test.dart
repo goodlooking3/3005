@@ -128,6 +128,47 @@ void main() {
     expect(statement.map((line) => line.balance), [300, 200]);
   });
 
+  test('aging uses contract due date when supplied, posting date otherwise',
+      () async {
+    final db = await LocalDatabase.instance.database;
+    await _seedProfiles(db);
+    final ids = await _accounts(db);
+    final customerId =
+        await _party(db, ids['AR']!, 'customer', 'عميل الاستحقاق');
+    await _post(
+      db,
+      'DUE-INVOICE',
+      DateTime.utc(2026, 6, 1),
+      [
+        _line(ids['AR']!, 'الذمم المدينة', debit: 100, partyId: customerId),
+        _line(ids['REV']!, 'الإيرادات', credit: 100),
+      ],
+      dueDate: DateTime.utc(2026, 8, 1),
+    );
+    await _post(db, 'LEGACY-INVOICE', DateTime.utc(2026, 9, 25), [
+      _line(ids['AR']!, 'الذمم المدينة', debit: 50, partyId: customerId),
+      _line(ids['REV']!, 'الإيرادات', credit: 50),
+    ]);
+    await _post(
+      db,
+      'NOT-DUE-INVOICE',
+      DateTime.utc(2026, 9, 1),
+      [
+        _line(ids['AR']!, 'الذمم المدينة', debit: 25, partyId: customerId),
+        _line(ids['REV']!, 'الإيرادات', credit: 25),
+      ],
+      dueDate: DateTime.utc(2026, 11, 1),
+    );
+
+    final report =
+        await ReportService().receivablesAging(asOf: DateTime.utc(2026, 10, 5));
+    final customer = report.rows.single;
+    expect(customer.notDue, 25);
+    expect(customer.days61To90, 100);
+    expect(customer.days0To30, 50);
+    expect(customer.openItems, 175);
+  });
+
   test(
       'base-currency position refuses foreign opening balance without valuation',
       () async {
@@ -210,8 +251,9 @@ Future<void> _post(
   Database db,
   String number,
   DateTime date,
-  List<Map<String, Object?>> lines,
-) async {
+  List<Map<String, Object?>> lines, {
+  DateTime? dueDate,
+}) async {
   await db.transaction((txn) async {
     final debitTotal = lines.fold<double>(
       0,
@@ -232,6 +274,7 @@ Future<void> _post(
     final entryId = await txn.insert('journal_entries', {
       'voucher_id': voucherId,
       'entry_date': date.toIso8601String(),
+      'due_date': dueDate?.toIso8601String(),
       'number': number,
       'description': number,
       'debit_total': debitTotal,

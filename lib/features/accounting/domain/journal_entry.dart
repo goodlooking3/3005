@@ -2,6 +2,7 @@ class JournalEntry {
   final int id;
   final int voucherId;
   final DateTime date;
+  final DateTime? dueDate;
   final String number;
   final String description;
   final double debitTotal;
@@ -13,6 +14,7 @@ class JournalEntry {
     required this.id,
     required this.voucherId,
     required this.date,
+    this.dueDate,
     required this.number,
     required this.description,
     required this.debitTotal,
@@ -27,6 +29,9 @@ class JournalEntry {
         id: row['id']! as int,
         voucherId: row['voucher_id']! as int,
         date: DateTime.parse(row['entry_date']! as String),
+        dueDate: row['due_date'] == null
+            ? null
+            : DateTime.parse(row['due_date']! as String),
         number: row['number']! as String,
         description: row['description']! as String,
         debitTotal: ((row['base_debit_total'] ?? row['debit_total'])! as num)

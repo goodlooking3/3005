@@ -4,6 +4,7 @@ class PartyAgingRow {
   final int partyId;
   final String partyName;
   final String currency;
+  final double notDue;
   final double days0To30;
   final double days31To60;
   final double days61To90;
@@ -14,6 +15,7 @@ class PartyAgingRow {
     required this.partyId,
     required this.partyName,
     required this.currency,
+    required this.notDue,
     required this.days0To30,
     required this.days31To60,
     required this.days61To90,
@@ -21,7 +23,8 @@ class PartyAgingRow {
     required this.unappliedCredit,
   });
 
-  double get openItems => days0To30 + days31To60 + days61To90 + daysOver90;
+  double get openItems =>
+      notDue + days0To30 + days31To60 + days61To90 + daysOver90;
   double get netBalance => openItems - unappliedCredit;
 }
 
@@ -108,7 +111,7 @@ extension ReportServicePartyReports on ReportService {
       SELECT p.id party_id,
         COALESCE(NULLIF(trim(p.name_ar), ''), p.name) party_name,
         p.account_id, UPPER(jl.currency) currency,
-        jl.debit, jl.credit, je.entry_date
+        jl.debit, jl.credit, je.entry_date, je.due_date
       FROM journal_lines jl
       JOIN journal_entries je ON je.id = jl.journal_entry_id
       JOIN parties p ON p.id = jl.party_id
@@ -137,7 +140,13 @@ extension ReportServicePartyReports on ReportService {
       final debit = (row['debit'] as num).toDouble();
       final credit = (row['credit'] as num).toDouble();
       final signed = partyType == 'customer' ? debit - credit : credit - debit;
-      accumulator.apply(DateTime.parse(row['entry_date']! as String), signed);
+      accumulator.apply(
+        DateTime.parse(row['entry_date']! as String),
+        signed,
+        dueDate: row['due_date'] == null
+            ? null
+            : DateTime.parse(row['due_date']! as String),
+      );
     }
 
     final reportRows = accumulators.values
@@ -269,12 +278,14 @@ class _AgingAccumulator {
     required this.currency,
   });
 
-  void apply(DateTime date, double amount) {
+  void apply(DateTime date, double amount, {DateTime? dueDate}) {
     if (amount > 0) {
       final applied = amount < _credit ? amount : _credit;
       _credit -= applied;
       final remainder = amount - applied;
-      if (remainder > 0.000001) _items.add(_OpenAgingItem(date, remainder));
+      if (remainder > 0.000001) {
+        _items.add(_OpenAgingItem(dueDate ?? date, remainder));
+      }
       return;
     }
     var settlement = -amount;
@@ -289,6 +300,7 @@ class _AgingAccumulator {
   }
 
   PartyAgingRow finish(DateTime asOf) {
+    var notDue = 0.0;
     var days0To30 = 0.0;
     var days31To60 = 0.0;
     var days61To90 = 0.0;
@@ -299,7 +311,9 @@ class _AgingAccumulator {
       final posted =
           DateTime.utc(item.date.year, item.date.month, item.date.day);
       final days = cutoff.difference(posted).inDays;
-      if (days <= 30) {
+      if (days < 0) {
+        notDue += item.amount;
+      } else if (days <= 30) {
         days0To30 += item.amount;
       } else if (days <= 60) {
         days31To60 += item.amount;
@@ -313,6 +327,7 @@ class _AgingAccumulator {
       partyId: partyId,
       partyName: partyName,
       currency: currency,
+      notDue: notDue,
       days0To30: days0To30,
       days31To60: days31To60,
       days61To90: days61To90,

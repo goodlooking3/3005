@@ -33,6 +33,7 @@ class _VoucherEditorDialogState extends State<VoucherEditorDialog> {
   Account? debit;
   Account? credit;
   Party? party;
+  DateTime? dueDate;
   String debitCurrency = 'SAR';
   String creditCurrency = 'SAR';
   bool saving = false;
@@ -84,6 +85,20 @@ class _VoucherEditorDialogState extends State<VoucherEditorDialog> {
 
   List<String> _currencies(Account? account) =>
       account?.supportedCurrencies ?? const ['SAR'];
+
+  bool get _supportsDueDate =>
+      debit?.kind == AccountKind.customer ||
+      credit?.kind == AccountKind.supplier;
+
+  Future<void> _pickDueDate() async {
+    final selected = await showDatePicker(
+      context: context,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      initialDate: dueDate ?? DateTime.now(),
+    );
+    if (selected != null) setState(() => dueDate = selected);
+  }
 
   void _setDebit(Account? value) => setState(() {
         debit = value;
@@ -148,6 +163,24 @@ class _VoucherEditorDialogState extends State<VoucherEditorDialog> {
               TextField(
                   controller: description,
                   decoration: const InputDecoration(labelText: 'البيان')),
+              if (_supportsDueDate)
+                Row(children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _pickDueDate,
+                      icon: const Icon(Icons.event_outlined),
+                      label: Text(dueDate == null
+                          ? 'تاريخ الاستحقاق (اختياري)'
+                          : 'الاستحقاق: ${dueDate!.year}-${dueDate!.month.toString().padLeft(2, '0')}-${dueDate!.day.toString().padLeft(2, '0')}'),
+                    ),
+                  ),
+                  if (dueDate != null)
+                    IconButton(
+                      tooltip: 'مسح تاريخ الاستحقاق',
+                      onPressed: () => setState(() => dueDate = null),
+                      icon: const Icon(Icons.close),
+                    ),
+                ]),
               TextField(
                   controller: debitAmount,
                   keyboardType:
@@ -210,6 +243,20 @@ class _VoucherEditorDialogState extends State<VoucherEditorDialog> {
       _message('اختر الحساب التحليلي المرتبط بالطرف في أحد طرفي السند');
       return;
     }
+    if (dueDate != null) {
+      final receivable = debit!.kind == AccountKind.customer &&
+          party?.type == 'customer' &&
+          party?.accountId == debit!.id &&
+          debitValue > 0;
+      final payable = credit!.kind == AccountKind.supplier &&
+          party?.type == 'supplier' &&
+          party?.accountId == credit!.id &&
+          creditValue > 0;
+      if (!receivable && !payable) {
+        _message('يرتبط تاريخ الاستحقاق بذمم عميل أو مورد مع طرف مطابق');
+        return;
+      }
+    }
     setState(() => saving = true);
     try {
       await widget.repository.insertVoucher(Voucher(
@@ -219,6 +266,7 @@ class _VoucherEditorDialogState extends State<VoucherEditorDialog> {
         amount: totalValue,
         currency: 'SAR',
         date: DateTime.now(),
+        dueDate: dueDate,
         recipientName: widget.type == VoucherType.receipt ? party?.name : null,
         payerName: widget.type == VoucherType.payment ? party?.name : null,
         debitAccountId: debit!.id,
