@@ -115,7 +115,8 @@ extension ReportServicePartyReports on ReportService {
       SELECT p.id party_id,
         COALESCE(NULLIF(trim(p.name_ar), ''), p.name) party_name,
         p.account_id, UPPER(jl.currency) currency,
-        jl.debit, jl.credit, je.entry_date, je.due_date
+        jl.debit, jl.credit, je.id journal_entry_id,
+        je.entry_date, je.due_date, je.reversal_of_id
       FROM journal_lines jl
       JOIN journal_entries je ON je.id = jl.journal_entry_id
       JOIN parties p ON p.id = jl.party_id
@@ -127,8 +128,18 @@ extension ReportServicePartyReports on ReportService {
         je.entry_date, je.id, jl.id
     ''', args);
 
+    final reversedEntryIds = <int>{};
+    for (final row in entries) {
+      final reversalOf = row['reversal_of_id'] as int?;
+      if (reversalOf != null) {
+        reversedEntryIds
+          ..add(reversalOf)
+          ..add(row['journal_entry_id']! as int);
+      }
+    }
     final accumulators = <(int, int, String), _AgingAccumulator>{};
     for (final row in entries) {
+      if (reversedEntryIds.contains(row['journal_entry_id']! as int)) continue;
       final id = row['party_id']! as int;
       final accountId = row['account_id']! as int;
       final money = row['currency']! as String;
