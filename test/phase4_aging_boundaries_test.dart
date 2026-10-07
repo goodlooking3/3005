@@ -16,16 +16,7 @@ void main() {
   test('aging bands include exact 0/30/31/60/61/90/91-day boundaries',
       () async {
     final db = await LocalDatabase.instance.database;
-    await db.insert('user_profile', {
-      'id': 1,
-      'display_name': 'اختبار',
-      'role': 'admin',
-    });
-    await db.insert('company_profile', {
-      'id': 1,
-      'name': 'منشأة اختبار',
-      'base_currency': 'SAR',
-    });
+    await _seedProfiles(db);
     final customerAccount = await db.insert('accounts', {
       'code': '1200',
       'name': 'ذمم العملاء',
@@ -88,16 +79,7 @@ void main() {
   test('reversing a settlement restores the original invoice aging',
       () async {
     final db = await LocalDatabase.instance.database;
-    await db.insert('user_profile', {
-      'id': 1,
-      'display_name': 'اختبار',
-      'role': 'admin',
-    });
-    await db.insert('company_profile', {
-      'id': 1,
-      'name': 'منشأة اختبار',
-      'base_currency': 'SAR',
-    });
+    await _seedProfiles(db);
     final customerAccount = await db.insert('accounts', {
       'code': '1200',
       'name': 'ذمم العملاء',
@@ -176,16 +158,7 @@ void main() {
 
   test('overpayment remains visible as unapplied party credit', () async {
     final db = await LocalDatabase.instance.database;
-    await db.insert('user_profile', {
-      'id': 1,
-      'display_name': 'اختبار',
-      'role': 'admin',
-    });
-    await db.insert('company_profile', {
-      'id': 1,
-      'name': 'منشأة اختبار',
-      'base_currency': 'SAR',
-    });
+    await _seedProfiles(db);
     final customerAccount = await db.insert('accounts', {
       'code': '1200',
       'name': 'ذمم العملاء',
@@ -229,6 +202,19 @@ void main() {
     expect(report.rows.single.netBalance, -50);
     expect(report.unallocated, isEmpty);
   });
+}
+
+Future<void> _seedProfiles(Database db) async {
+  await db.insert(
+    'user_profile',
+    {'id': 1, 'display_name': 'اختبار', 'role': 'admin'},
+    conflictAlgorithm: ConflictAlgorithm.replace,
+  );
+  await db.insert(
+    'company_profile',
+    {'id': 1, 'name': 'منشأة اختبار', 'base_currency': 'SAR'},
+    conflictAlgorithm: ConflictAlgorithm.replace,
+  );
 }
 
 Future<void> _post(
