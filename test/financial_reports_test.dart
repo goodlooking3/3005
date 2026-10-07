@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:wasel/features/accounting/application/accounting_reports_controller.dart';
 import 'package:wasel/data/accounting_policy_repository.dart';
+import 'package:wasel/data/accounting_repository.dart';
 import 'package:wasel/data/local_database.dart';
 import 'package:wasel/services/report_service.dart';
 
@@ -20,6 +22,12 @@ void main() {
     final ids = await _accounts(db);
     final customerId = await _party(db, ids['AR']!, 'customer', 'عميل تقارير');
     final supplierId = await _party(db, ids['AP']!, 'supplier', 'مورد تقارير');
+    await db.update(
+      'accounts',
+      {'position_class': 'current'},
+      where: 'id = ?',
+      whereArgs: [ids['CASH']],
+    );
 
     await _post(db, 'OPEN', DateTime.utc(2026, 1, 1), [
       _line(ids['CASH']!, 'الصندوق', debit: 1000),
@@ -65,6 +73,71 @@ void main() {
     expect(position.unclosedResult, 80);
     expect(position.difference, closeTo(0, 0.000001));
     expect(position.isBalanced, isTrue);
+    expect(
+      position.assetsLines
+          .singleWhere((line) => line.code == '1000')
+          .positionClass,
+      'current',
+    );
+    expect(
+      position.assetsLines
+          .singleWhere((line) => line.code == '1200')
+          .positionClass,
+      'unclassified',
+    );
+  });
+
+  test('comparative report ranges honor previous-period and prior-year choices',
+      () {
+    final previousPeriod = reportComparisonRange(
+      from: DateTime.utc(2026, 3, 1),
+      to: DateTime.utc(2026, 3, 31, 23, 59),
+      basis: ComparativePeriodBasis.previousPeriod,
+    )!;
+    expect(previousPeriod.from, DateTime(2026, 2, 1));
+    expect(previousPeriod.to, DateTime(2026, 2, 28, 23, 59, 59, 999, 999));
+
+    final previousYear = reportComparisonRange(
+      from: DateTime.utc(2026, 3, 1),
+      to: DateTime.utc(2026, 3, 31, 23, 59),
+      basis: ComparativePeriodBasis.previousYear,
+    )!;
+    expect(previousYear.from, DateTime(2025, 3, 1));
+    expect(previousYear.to, DateTime(2025, 3, 31, 23, 59, 59, 999, 999));
+
+    final leapDay = reportComparisonRange(
+      from: DateTime.utc(2024, 2, 29),
+      to: DateTime.utc(2024, 2, 29, 23, 59),
+      basis: ComparativePeriodBasis.previousYear,
+    )!;
+    expect(leapDay.from, DateTime(2023, 2, 28));
+    expect(leapDay.to, DateTime(2023, 2, 28, 23, 59, 59, 999, 999));
+  });
+
+  test('reports controller loads comparative period financial totals',
+      () async {
+    final db = await LocalDatabase.instance.database;
+    await _seedProfiles(db);
+    final ids = await _accounts(db);
+    await _post(db, 'PRIOR-PERIOD-SALE', DateTime.utc(2026, 2, 10), [
+      _line(ids['AR']!, 'الذمم المدينة', debit: 50),
+      _line(ids['REV']!, 'الإيرادات', credit: 50),
+    ]);
+    await _post(db, 'CURRENT-PERIOD-SALE', DateTime.utc(2026, 3, 10), [
+      _line(ids['AR']!, 'الذمم المدينة', debit: 100),
+      _line(ids['REV']!, 'الإيرادات', credit: 100),
+    ]);
+    final controller = AccountingReportsController(AccountingRepository());
+    controller.from = DateTime.utc(2026, 3, 1);
+    controller.to = DateTime.utc(2026, 3, 31, 23, 59);
+    await controller.load();
+
+    expect(controller.error, isNull);
+    expect(controller.profitLoss?.revenue, 100);
+    expect(controller.comparativeProfitLoss?.revenue, 50);
+    expect(controller.comparisonFrom, DateTime(2026, 2, 1));
+    expect(controller.comparisonTo, DateTime(2026, 2, 28, 23, 59, 59, 999, 999));
+    controller.dispose();
   });
 
   test('aging applies settlements FIFO per party and reports control residual',
@@ -211,6 +284,89 @@ void main() {
       ReportService().balanceSheet(asOf: DateTime.utc(2026, 10, 5)),
       throwsA(isA<StateError>()),
     );
+  });
+
+  test('cash flows use account classifications and isolate internal transfers',
+      () async {
+    final db = await LocalDatabase.instance.database;
+    await _seedProfiles(db);
+    final ids = await _accounts(db);
+    await db.update(
+      'accounts',
+      {'cash_flow_category': 'operating'},
+      where: 'id = ?',
+      whereArgs: [ids['REV']],
+    );
+    final equipmentId = await db.insert('accounts', {
+      'code': '1500',
+      'name': 'معدات',
+      'type': 'أصل',
+      'kind': 'asset',
+      'currency': 'SAR',
+      'cash_flow_category': 'investing',
+    });
+    final loanId = await db.insert('accounts', {
+      'code': '2300',
+      'name': 'قرض',
+      'type': 'التزام',
+      'kind': 'liability',
+      'currency': 'SAR',
+      'cash_flow_category': 'financing',
+    });
+    final bankId = await db.insert('accounts', {
+      'code': '1010',
+      'name': 'بنك',
+      'type': 'أصل',
+      'kind': 'bank',
+      'currency': 'SAR',
+    });
+
+    await _post(db, 'CF-OPERATING', DateTime.utc(2026, 10, 1), [
+      _line(ids['CASH']!, 'الصندوق', debit: 100),
+      _line(ids['REV']!, 'الإيرادات', credit: 100),
+    ]);
+    await _post(db, 'CF-INVESTING', DateTime.utc(2026, 10, 2), [
+      _line(equipmentId, 'معدات', debit: 40),
+      _line(ids['CASH']!, 'الصندوق', credit: 40),
+    ]);
+    await _post(db, 'CF-FINANCING', DateTime.utc(2026, 10, 3), [
+      _line(ids['CASH']!, 'الصندوق', debit: 70),
+      _line(loanId, 'قرض', credit: 70),
+    ]);
+    await _post(db, 'CF-UNCLASSIFIED', DateTime.utc(2026, 10, 4), [
+      _line(ids['EXP']!, 'المصروفات', debit: 15),
+      _line(ids['CASH']!, 'الصندوق', credit: 15),
+    ]);
+    await _post(db, 'CF-TRANSFER', DateTime.utc(2026, 10, 5), [
+      _line(ids['CASH']!, 'الصندوق', debit: 20),
+      _line(bankId, 'البنك', credit: 20),
+    ]);
+
+    final rows = await ReportService().cashFlow(
+      currency: 'SAR',
+      from: DateTime.utc(2026, 10, 1),
+      to: DateTime.utc(2026, 10, 5, 23, 59),
+    );
+    expect(rows.where((row) => row.category == 'operating').single.amount, 100);
+    expect(rows.where((row) => row.category == 'investing').single.direction,
+        'out');
+    expect(rows.where((row) => row.category == 'financing').single.amount, 70);
+    expect(
+        rows.where((row) => row.category == 'unclassified').single.amount, 15);
+    expect(
+      rows.where((row) => row.category == 'internal_transfer').length,
+      2,
+    );
+    final reconciliation = await ReportService().cashFlowReconciliation(
+      currency: 'SAR',
+      from: DateTime.utc(2026, 10, 1),
+      to: DateTime.utc(2026, 10, 5, 23, 59),
+    );
+    expect(reconciliation.openingBalance, 0);
+    expect(reconciliation.netLedgerMovement, 115);
+    expect(reconciliation.endingBalance, 115);
+    expect(reconciliation.difference, closeTo(0, 0.000001));
+    expect(reconciliation.reconciled, isTrue);
   });
 }
 

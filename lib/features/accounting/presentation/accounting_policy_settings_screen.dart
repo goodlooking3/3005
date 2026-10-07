@@ -108,7 +108,7 @@ class _AccountingPolicySettingsDialogState
                         ),
                       ),
                     DropdownButtonFormField<ReportingFramework>(
-                      value: settings.reportingFramework,
+                      initialValue: settings.reportingFramework,
                       decoration: const InputDecoration(
                         labelText: 'إطار التقارير المفضل',
                       ),
@@ -156,7 +156,7 @@ class _AccountingPolicySettingsDialogState
                       ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<AgingDateBasis>(
-                      value: settings.agingDateBasis,
+                      initialValue: settings.agingDateBasis,
                       decoration: const InputDecoration(
                         labelText: 'أساس أعمار الذمم',
                       ),
@@ -182,7 +182,7 @@ class _AccountingPolicySettingsDialogState
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<int>(
-                      value: settings.fiscalYearStartMonth,
+                      initialValue: settings.fiscalYearStartMonth,
                       decoration: const InputDecoration(
                         labelText: 'شهر بداية السنة المالية',
                       ),
@@ -197,6 +197,33 @@ class _AccountingPolicySettingsDialogState
                           ? null
                           : (value) => setState(() => settings = _copy(
                                 month: value ?? settings.fiscalYearStartMonth,
+                              )),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<ComparativePeriodBasis>(
+                      initialValue: settings.comparativePeriodBasis,
+                      decoration: const InputDecoration(
+                        labelText: 'سياسة مقارنة التقارير',
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: ComparativePeriodBasis.none,
+                          child: Text('بدون مقارنة'),
+                        ),
+                        DropdownMenuItem(
+                          value: ComparativePeriodBasis.previousPeriod,
+                          child: Text('الفترة السابقة المماثلة في المدة'),
+                        ),
+                        DropdownMenuItem(
+                          value: ComparativePeriodBasis.previousYear,
+                          child: Text('الفترة نفسها من العام السابق'),
+                        ),
+                      ],
+                      onChanged: saving
+                          ? null
+                          : (value) => setState(() => settings = _copy(
+                                comparison: value ??
+                                    settings.comparativePeriodBasis,
                               )),
                     ),
                     const SizedBox(height: 16),
@@ -237,12 +264,15 @@ class _AccountingPolicySettingsDialogState
     AgingDateBasis? aging,
     int? month,
     String? jurisdictionCode,
+    ComparativePeriodBasis? comparison,
   }) =>
       AccountingPolicySettings(
         reportingFramework: framework ?? settings.reportingFramework,
         agingDateBasis: aging ?? settings.agingDateBasis,
         fiscalYearStartMonth: month ?? settings.fiscalYearStartMonth,
         jurisdictionCode: jurisdictionCode ?? settings.jurisdictionCode,
+        comparativePeriodBasis:
+            comparison ?? settings.comparativePeriodBasis,
       );
 
   static const _months = [

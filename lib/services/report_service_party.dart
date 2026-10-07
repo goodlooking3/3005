@@ -102,8 +102,8 @@ extension ReportServicePartyReports on ReportService {
     await AccountingAuthorization.instance
         .requireRead(db, AccountingPermission.viewLedger);
     final normalizedCurrency = currency?.trim().toUpperCase();
-    final agingBasis =
-        (await const AccountingPolicyRepository().load()).agingDateBasis;
+    final agingBasis = (await const AccountingPolicyRepository().load())
+        .agingDateBasis;
     final cutoff = _reportDayAfter(asOf).toIso8601String();
     final args = <Object?>[partyType, partyType, cutoff];
     var extra = '';

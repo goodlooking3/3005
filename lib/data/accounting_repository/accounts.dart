@@ -1,5 +1,12 @@
 part of '../accounting_repository.dart';
 
+const _cashFlowCategories = {'unclassified', 'operating', 'investing', 'financing'};
+const _positionClasses = {'unclassified', 'current', 'non_current'};
+const _positionKinds = {
+  AccountKind.asset, AccountKind.liability, AccountKind.cash,
+  AccountKind.bank, AccountKind.customer, AccountKind.supplier,
+};
+
 extension AccountingRepositoryAccounts on AccountingRepository {
   Future<List<Voucher>> vouchers() async {
     final db = await _db;
@@ -50,6 +57,16 @@ extension AccountingRepositoryAccounts on AccountingRepository {
           final code = account.code.trim();
           if (code.isEmpty || account.name.trim().isEmpty) {
             throw ArgumentError('رقم واسم الحساب مطلوبان');
+          }
+          if (!_cashFlowCategories.contains(account.cashFlowCategory)) {
+            throw ArgumentError('تصنيف التدفق النقدي غير صالح');
+          }
+          if (!_positionClasses.contains(account.positionClass)) {
+            throw ArgumentError('تصنيف المركز المالي غير صالح');
+          }
+          if (account.positionClass != 'unclassified' &&
+              !_positionKinds.contains(account.kind)) {
+            throw ArgumentError('تصنيف الجاري يخص الأصول والالتزامات فقط');
           }
           final duplicate = await db.query('accounts',
               columns: ['id'], where: 'code = ?', whereArgs: [code], limit: 1);
@@ -114,6 +131,8 @@ extension AccountingRepositoryAccounts on AccountingRepository {
             'currency': primaryCurrency,
             'opening_balance': account.balance,
             'active': account.active ? 1 : 0,
+            'cash_flow_category': account.cashFlowCategory,
+            'position_class': account.positionClass,
           };
           final insertedId = account.id == null
               ? await db.insert('accounts', values)
@@ -194,6 +213,9 @@ extension AccountingRepositoryAccounts on AccountingRepository {
             currency: r['currency']! as String,
             balance: (r['opening_balance']! as num).toDouble(),
             active: (r['active'] as int? ?? 1) == 1,
+            cashFlowCategory:
+                r['cash_flow_category'] as String? ?? 'unclassified',
+            positionClass: r['position_class'] as String? ?? 'unclassified',
           ),
         )
         .toList();
@@ -269,6 +291,9 @@ extension AccountingRepositoryAccounts on AccountingRepository {
         currency: row['currency']! as String,
         balance: (row['opening_balance']! as num).toDouble(),
         active: (row['active'] as int? ?? 1) == 1,
+        cashFlowCategory:
+            row['cash_flow_category'] as String? ?? 'unclassified',
+        positionClass: row['position_class'] as String? ?? 'unclassified',
       );
 
   Future<void> setAccountActive(int id, bool active) =>

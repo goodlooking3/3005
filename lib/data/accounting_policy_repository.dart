@@ -7,17 +7,21 @@ enum AgingDateBasis { dueDateWhenAvailable, postingDateOnly, dueDateOnly }
 
 enum ReportingFramework { general, ifrs, local }
 
+enum ComparativePeriodBasis { none, previousPeriod, previousYear }
+
 class AccountingPolicySettings {
   final ReportingFramework reportingFramework;
   final AgingDateBasis agingDateBasis;
   final int fiscalYearStartMonth;
   final String jurisdictionCode;
+  final ComparativePeriodBasis comparativePeriodBasis;
 
   const AccountingPolicySettings({
     this.reportingFramework = ReportingFramework.general,
     this.agingDateBasis = AgingDateBasis.dueDateWhenAvailable,
     this.fiscalYearStartMonth = 1,
     this.jurisdictionCode = '',
+    this.comparativePeriodBasis = ComparativePeriodBasis.previousPeriod,
   });
 }
 
@@ -29,6 +33,7 @@ class AccountingPolicyRepository {
     'aging_date_basis': 'due_date_when_available',
     'fiscal_year_start_month': '1',
     'jurisdiction_code': '',
+    'comparative_period_basis': 'previous_period',
   };
 
   Future<AccountingPolicySettings> load() async {
@@ -51,11 +56,17 @@ class AccountingPolicyRepository {
       _ => AgingDateBasis.dueDateWhenAvailable,
     };
     final month = int.tryParse(values['fiscal_year_start_month'] ?? '') ?? 1;
+    final comparison = switch (values['comparative_period_basis']) {
+      'none' => ComparativePeriodBasis.none,
+      'previous_year' => ComparativePeriodBasis.previousYear,
+      _ => ComparativePeriodBasis.previousPeriod,
+    };
     return AccountingPolicySettings(
       reportingFramework: framework,
       agingDateBasis: aging,
       fiscalYearStartMonth: month >= 1 && month <= 12 ? month : 1,
       jurisdictionCode: values['jurisdiction_code'] ?? '',
+      comparativePeriodBasis: comparison,
     );
   }
 
@@ -82,6 +93,13 @@ class AccountingPolicyRepository {
           },
           'fiscal_year_start_month': '${settings.fiscalYearStartMonth}',
           'jurisdiction_code': jurisdiction,
+          'comparative_period_basis': switch (
+            settings.comparativePeriodBasis
+          ) {
+            ComparativePeriodBasis.none => 'none',
+            ComparativePeriodBasis.previousPeriod => 'previous_period',
+            ComparativePeriodBasis.previousYear => 'previous_year',
+          },
         };
         for (final entry in values.entries) {
           await txn.insert(

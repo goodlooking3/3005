@@ -127,5 +127,19 @@ class LocalDatabaseSchema {
       await _ensureAccountingPolicySettings(db);
       await _ensureAuditTrail(db);
     }
+    if (oldVersion < 33) {
+      await _addColumnIfMissing(
+        db,
+        'accounts',
+        'cash_flow_category',
+        "TEXT NOT NULL DEFAULT 'unclassified'",
+      );
+      await _addColumnIfMissing(
+        db,
+        'accounts',
+        'position_class',
+        "TEXT NOT NULL DEFAULT 'unclassified'",
+      );
+    }
   }
 }

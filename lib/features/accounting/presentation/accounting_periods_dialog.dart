@@ -62,8 +62,9 @@ class _AccountingPeriodsDialogState extends State<AccountingPeriodsDialog> {
     final now = DateTime.now();
     final policy = await const AccountingPolicyRepository().load();
     if (!mounted) return;
-    final fiscalStartYear =
-        now.month >= policy.fiscalYearStartMonth ? now.year : now.year - 1;
+    final fiscalStartYear = now.month >= policy.fiscalYearStartMonth
+        ? now.year
+        : now.year - 1;
     final fiscalStart = DateTime(fiscalStartYear, policy.fiscalYearStartMonth);
     final fiscalEnd = DateTime(fiscalStartYear + 1, policy.fiscalYearStartMonth)
         .subtract(const Duration(days: 1));

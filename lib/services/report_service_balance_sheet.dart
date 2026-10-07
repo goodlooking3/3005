@@ -3,11 +3,13 @@ part of 'report_service.dart';
 class FinancialPositionLine {
   final String code;
   final String account;
+  final String positionClass;
   final double balance;
 
   const FinancialPositionLine({
     required this.code,
     required this.account,
+    required this.positionClass,
     required this.balance,
   });
 }
@@ -58,6 +60,13 @@ extension ReportServiceBalanceSheet on ReportService {
     final cutoff = _reportEndOfDay(asOf);
     final balances = await AccountingRepository()
         .accountBalances(asOf: cutoff, includeInactive: true);
+    final accountDetails = await AccountingRepository().accounts(
+      includeInactive: true,
+    );
+    final detailsById = {
+      for (final account in accountDetails)
+        if (account.id != null) account.id!: account,
+    };
     final assets = <FinancialPositionLine>[];
     final liabilities = <FinancialPositionLine>[];
     final equity = <FinancialPositionLine>[];
@@ -75,6 +84,8 @@ extension ReportServiceBalanceSheet on ReportService {
       final line = FinancialPositionLine(
         code: item.accountCode,
         account: item.accountName,
+        positionClass:
+            detailsById[item.accountId]?.positionClass ?? 'unclassified',
         balance: amount,
       );
       switch (item.kind) {

@@ -13,6 +13,7 @@ Future<void> _ensureAccountingPolicySettings(Database db) async {
     'aging_date_basis': 'due_date_when_available',
     'fiscal_year_start_month': '1',
     'jurisdiction_code': '',
+    'comparative_period_basis': 'previous_period',
   };
   final now = DateTime.now().toUtc().toIso8601String();
   for (final entry in defaults.entries) {

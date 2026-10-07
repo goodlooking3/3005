@@ -4,6 +4,9 @@ import '../application/accounting_reports_controller.dart';
 import '../domain/journal_entry.dart';
 import '../../../data/accounting_repository.dart';
 import '../../../services/report_service.dart';
+import 'cash_flow_report_view.dart';
+import 'comparative_reports_view.dart';
+import 'financial_position_section.dart';
 
 class AccountingReportsScreen extends StatefulWidget {
   final AccountingReportsController controller;
@@ -104,6 +107,10 @@ class _AccountingReportsScreenState extends State<AccountingReportsScreen> {
                       label: Text('أعمار الموردين')),
                   ButtonSegment(
                       value: 6,
+                      icon: Icon(Icons.swap_horiz_rounded),
+                      label: Text('حركة النقد')),
+                  ButtonSegment(
+                      value: 7,
                       icon: Icon(Icons.fact_check_outlined),
                       label: Text('سجل التدقيق')),
                 ],
@@ -181,10 +188,22 @@ class _AccountingReportsScreenState extends State<AccountingReportsScreen> {
   Widget _body(AccountingReportsController controller) => switch (section) {
         0 => _journal(controller.journal),
         1 => _trialBalance(controller.trialBalance),
-        2 => _profitLoss(controller.profitLoss),
-        3 => _balanceSheet(controller.balanceSheet),
+        2 => _profitLoss(
+            controller.profitLoss,
+            controller.comparativeProfitLoss,
+            controller.comparisonFrom,
+            controller.comparisonTo,
+          ),
+        3 => _balanceSheet(
+            controller.balanceSheet,
+            controller.comparativeBalanceSheet,
+          ),
         4 => _aging(controller.receivablesAging, 'customer', controller),
         5 => _aging(controller.payablesAging, 'supplier', controller),
+        6 => CashFlowReportView(
+            rows: controller.cashFlow,
+            reconciliation: controller.cashFlowReconciliation,
+          ),
         _ => _audit(controller.audit),
       };
 
@@ -244,7 +263,12 @@ class _AccountingReportsScreenState extends State<AccountingReportsScreen> {
     );
   }
 
-  Widget _profitLoss(ProfitLossReport? report) {
+  Widget _profitLoss(
+    ProfitLossReport? report,
+    ProfitLossReport? comparison,
+    DateTime? comparisonFrom,
+    DateTime? comparisonTo,
+  ) {
     if (report == null) {
       return const Center(child: Text('لا توجد بيانات الأرباح والخسائر بعد.'));
     }
@@ -266,11 +290,20 @@ class _AccountingReportsScreenState extends State<AccountingReportsScreen> {
               title: const Text('صافي النتيجة'),
               trailing: Text(report.net.toStringAsFixed(2))),
         ),
+        if (comparison != null)
+          ComparativeProfitLossSummary(
+            report: comparison,
+            from: comparisonFrom!,
+            to: comparisonTo!,
+          ),
       ],
     );
   }
 
-  Widget _balanceSheet(BalanceSheetReport? report) {
+  Widget _balanceSheet(
+    BalanceSheetReport? report,
+    BalanceSheetReport? comparison,
+  ) {
     if (report == null) {
       return const Center(child: Text('لا توجد بيانات للمركز المالي.'));
     }
@@ -280,10 +313,23 @@ class _AccountingReportsScreenState extends State<AccountingReportsScreen> {
           title: const Text('كما في'),
           trailing: Text('${_date(report.asOf)} · ${report.currency}'),
         ),
-        _positionSection('الأصول', report.assetsLines, report.assets),
-        _positionSection(
-            'الالتزامات', report.liabilitiesLines, report.liabilities),
-        _positionSection('حقوق الملكية', report.equityLines, report.equity),
+        if (comparison != null)
+          ComparativeBalanceSheetSummary(report: comparison),
+        FinancialPositionSection(
+          title: 'الأصول',
+          rows: report.assetsLines,
+          total: report.assets,
+        ),
+        FinancialPositionSection(
+          title: 'الالتزامات',
+          rows: report.liabilitiesLines,
+          total: report.liabilities,
+        ),
+        FinancialPositionSection(
+          title: 'حقوق الملكية',
+          rows: report.equityLines,
+          total: report.equity,
+        ),
         Card(
           child: ListTile(
             title: const Text('نتيجة غير مقفلة حتى التاريخ'),
@@ -306,24 +352,6 @@ class _AccountingReportsScreenState extends State<AccountingReportsScreen> {
       ],
     );
   }
-
-  Widget _positionSection(
-          String title, List<FinancialPositionLine> rows, double total) =>
-      Card(
-        child: ExpansionTile(
-          title: Text(title),
-          subtitle: Text('الإجمالي ${total.toStringAsFixed(2)}'),
-          children: rows.isEmpty
-              ? const [ListTile(title: Text('لا توجد أرصدة.'))]
-              : rows
-                  .map((row) => ListTile(
-                        title: Text(row.account),
-                        subtitle: Text(row.code),
-                        trailing: Text(row.balance.toStringAsFixed(2)),
-                      ))
-                  .toList(),
-        ),
-      );
 
   Widget _aging(
     PartyAgingReport? report,

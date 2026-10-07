@@ -28,6 +28,8 @@ class Account {
   final List<String> currencies;
   final double balance;
   final bool active;
+  final String cashFlowCategory;
+  final String positionClass;
   const Account({
     this.id,
     required this.code,
@@ -42,6 +44,8 @@ class Account {
     this.currencies = const [],
     this.balance = 0,
     this.active = true,
+    this.cashFlowCategory = 'unclassified',
+    this.positionClass = 'unclassified',
   });
 
   List<String> get supportedCurrencies =>
@@ -61,6 +65,8 @@ class Account {
         currencies: values,
         balance: balance,
         active: active,
+        cashFlowCategory: cashFlowCategory,
+        positionClass: positionClass,
       );
 }
 

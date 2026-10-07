@@ -25,7 +25,7 @@ Future<void> _createAccountingTables(Database db) async {
 
 Future<void> _createEnterpriseTables(Database db) async {
   await db.execute(
-    '''CREATE TABLE IF NOT EXISTS accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL UNIQUE, name TEXT NOT NULL, name_ar TEXT, name_en TEXT, type TEXT NOT NULL, kind TEXT NOT NULL, parent_id INTEGER, is_group INTEGER NOT NULL DEFAULT 0, currency TEXT NOT NULL DEFAULT 'SAR', opening_balance REAL NOT NULL DEFAULT 0, active INTEGER NOT NULL DEFAULT 1)''',
+    '''CREATE TABLE IF NOT EXISTS accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL UNIQUE, name TEXT NOT NULL, name_ar TEXT, name_en TEXT, type TEXT NOT NULL, kind TEXT NOT NULL, parent_id INTEGER, is_group INTEGER NOT NULL DEFAULT 0, currency TEXT NOT NULL DEFAULT 'SAR', opening_balance REAL NOT NULL DEFAULT 0, active INTEGER NOT NULL DEFAULT 1, cash_flow_category TEXT NOT NULL DEFAULT 'unclassified', position_class TEXT NOT NULL DEFAULT 'unclassified')''',
   );
   await _addColumnIfMissing(db, 'accounts', 'name_ar', 'TEXT');
   await _addColumnIfMissing(db, 'accounts', 'name_en', 'TEXT');

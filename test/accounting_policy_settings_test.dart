@@ -20,18 +20,27 @@ void main() {
     expect(initial.reportingFramework, ReportingFramework.general);
     expect(initial.agingDateBasis, AgingDateBasis.dueDateWhenAvailable);
     expect(initial.fiscalYearStartMonth, 1);
+    expect(
+      initial.comparativePeriodBasis,
+      ComparativePeriodBasis.previousPeriod,
+    );
 
     await repository.save(const AccountingPolicySettings(
       reportingFramework: ReportingFramework.local,
       agingDateBasis: AgingDateBasis.dueDateOnly,
       fiscalYearStartMonth: 7,
       jurisdictionCode: 'SA',
+      comparativePeriodBasis: ComparativePeriodBasis.previousYear,
     ));
     final saved = await repository.load();
     expect(saved.reportingFramework, ReportingFramework.local);
     expect(saved.agingDateBasis, AgingDateBasis.dueDateOnly);
     expect(saved.fiscalYearStartMonth, 7);
     expect(saved.jurisdictionCode, 'SA');
+    expect(
+      saved.comparativePeriodBasis,
+      ComparativePeriodBasis.previousYear,
+    );
 
     final db = await LocalDatabase.instance.database;
     expect(

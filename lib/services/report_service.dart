@@ -54,13 +54,33 @@ class CashFlowRow {
   final String description;
   final double amount;
   final String direction;
+  final String category;
 
   const CashFlowRow({
     required this.date,
     required this.description,
     required this.amount,
     required this.direction,
+    required this.category,
   });
+}
+
+class CashFlowReconciliation {
+  final String currency;
+  final double openingBalance;
+  final double netLedgerMovement;
+  final double endingBalance;
+  final double difference;
+
+  const CashFlowReconciliation({
+    required this.currency,
+    required this.openingBalance,
+    required this.netLedgerMovement,
+    required this.endingBalance,
+    required this.difference,
+  });
+
+  bool get reconciled => difference.abs() <= 0.01;
 }
 
 class ReportService {
@@ -200,27 +220,50 @@ class ReportService {
     final db = await _db;
     await AccountingAuthorization.instance
         .requireRead(db, AccountingPermission.viewLedger);
+    final requestedCurrency = currency?.trim().toUpperCase();
+    final selectedCurrency = requestedCurrency == null || requestedCurrency.isEmpty
+        ? null
+        : requestedCurrency;
     final filter = _filters(
-      currency: currency,
+      currency: selectedCurrency,
       from: from,
       to: to,
       dateColumn: 'je.entry_date',
-      currencyColumn: 'l.currency',
+      currencyColumn: 'cash.currency',
     );
-    final debit = _amount('l', 'debit', useBase: currency == null);
-    final credit = _amount('l', 'credit', useBase: currency == null);
-    final where =
-        filter.where.isEmpty ? '' : ' AND ${filter.where.substring(6)}';
-    if (currency == null) await _ensureBaseValuations(db, filter);
+    final debit =
+        _amount('cash', 'debit', useBase: selectedCurrency == null);
+    final credit =
+        _amount('cash', 'credit', useBase: selectedCurrency == null);
+    final where = filter.where;
+    if (selectedCurrency == null) await _ensureBaseValuations(db, filter);
     final rows = await db.rawQuery(
       '''SELECT je.entry_date date, je.description,
-        CASE WHEN $debit > 0 THEN $debit ELSE $credit END amount,
-        CASE WHEN $debit > 0 THEN 'in' ELSE 'out' END direction
-      FROM journal_lines l
-      JOIN journal_entries je ON je.id = l.journal_entry_id
-      JOIN accounts a ON a.id = l.account_id
-      WHERE a.kind IN ('cash','bank')$where
-      ORDER BY je.entry_date ASC, je.id ASC, l.id ASC''',
+        ABS(SUM($debit - $credit)) amount,
+        CASE WHEN SUM($debit - $credit) > 0 THEN 'in' ELSE 'out' END direction,
+        CASE WHEN COALESCE(counterpart.line_count, 0) = 0
+          THEN 'internal_transfer'
+          WHEN counterpart.category_count = 1 THEN counterpart.category
+          ELSE 'unclassified' END category
+      FROM journal_lines cash
+      JOIN journal_entries je ON je.id = cash.journal_entry_id
+      JOIN accounts cash_account ON cash_account.id = cash.account_id
+      LEFT JOIN (
+        SELECT jl.journal_entry_id,
+          COUNT(*) line_count,
+          COUNT(DISTINCT COALESCE(a.cash_flow_category, 'unclassified')) category_count,
+          MIN(COALESCE(a.cash_flow_category, 'unclassified')) category
+        FROM journal_lines jl
+        JOIN accounts a ON a.id = jl.account_id
+        WHERE a.kind NOT IN ('cash', 'bank')
+        GROUP BY jl.journal_entry_id
+      ) counterpart ON counterpart.journal_entry_id = je.id
+      ${where.isEmpty ? '' : where}
+        ${where.isEmpty ? 'WHERE' : 'AND'} cash_account.kind IN ('cash','bank')
+      GROUP BY je.id, cash_account.id, cash.currency, counterpart.line_count,
+        counterpart.category_count, counterpart.category
+      HAVING ABS(SUM($debit - $credit)) > 0.000001
+      ORDER BY je.entry_date ASC, je.id ASC, cash_account.id ASC''',
       filter.args,
     );
     return rows
@@ -230,9 +273,74 @@ class ReportService {
             description: row['description']! as String,
             amount: (row['amount'] as num).toDouble(),
             direction: row['direction']! as String,
+            category: row['category']! as String,
           ),
-        )
+      )
         .toList();
+  }
+
+  /// Internal ledger reconciliation only; this is not an IAS 7 statement.
+  Future<CashFlowReconciliation> cashFlowReconciliation({
+    String? currency,
+    DateTime? from,
+    DateTime? to,
+  }) async {
+    if (from != null && to != null && to.isBefore(from)) {
+      throw ArgumentError('نهاية فترة حركة النقد تسبق بدايتها');
+    }
+    final db = await _db;
+    await AccountingAuthorization.instance
+        .requireRead(db, AccountingPermission.viewLedger);
+    final requestedCurrency = currency?.trim().toUpperCase();
+    final selectedCurrency = requestedCurrency == null || requestedCurrency.isEmpty
+        ? null
+        : requestedCurrency;
+    final baseCurrency = await currencyPolicy.requireBaseCurrency(db);
+    final reportCurrency = selectedCurrency ?? baseCurrency;
+    final openingCutoff = from == null
+        ? DateTime(1)
+        : DateTime(from.year, from.month, from.day)
+            .subtract(const Duration(microseconds: 1));
+    final endingCutoff = to ?? DateTime.now();
+
+    Future<double> cashBalance(DateTime asOf) async {
+      final balances = await AccountingRepository().accountBalances(
+        asOf: asOf,
+        includeInactive: true,
+      );
+      var total = 0.0;
+      for (final balance in balances.where((item) =>
+          !item.isGroup &&
+          {AccountKind.cash, AccountKind.bank}.contains(item.kind) &&
+          (selectedCurrency == null || item.currency == selectedCurrency))) {
+        final amount = selectedCurrency == null
+            ? balance.baseBalance
+            : balance.balance;
+        if (amount == null || !amount.isFinite) {
+          throw StateError(
+            'تعذر مصالحة حركة النقد: يوجد رصيد نقدي بلا تقييم للعملة الأساسية',
+          );
+        }
+        total += amount;
+      }
+      return total;
+    }
+
+    final opening = await cashBalance(openingCutoff);
+    final ending = await cashBalance(endingCutoff);
+    final rows =
+        await cashFlow(currency: selectedCurrency, from: from, to: to);
+    final movement = rows.fold<double>(0, (sum, row) {
+      final signed = row.direction == 'in' ? row.amount : -row.amount;
+      return sum + signed;
+    });
+    return CashFlowReconciliation(
+      currency: reportCurrency,
+      openingBalance: opening,
+      netLedgerMovement: movement,
+      endingBalance: ending,
+      difference: ending - opening - movement,
+    );
   }
 
   String _amount(String alias, String column, {required bool useBase}) =>

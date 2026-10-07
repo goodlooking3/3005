@@ -20,13 +20,13 @@ void main() {
 
   setUp(() async => LocalDatabase.instance.resetForTests());
 
-  test('fresh schema is v32 with append-only ledger and FK integrity',
+  test('fresh schema is v33 with append-only ledger and FK integrity',
       () async {
     final db = await LocalDatabase.instance.database;
     final version = Sqflite.firstIntValue(
       await db.rawQuery('PRAGMA user_version'),
     );
-    expect(version, 32);
+    expect(version, 33);
     final policies = await db.query('accounting_policy_settings');
     expect(
       policies.map((row) => row['policy_key']),
@@ -34,7 +34,14 @@ void main() {
         'reporting_framework',
         'aging_date_basis',
         'fiscal_year_start_month',
+        'jurisdiction_code',
+        'comparative_period_basis',
       ]),
+    );
+    final accountColumns = await db.rawQuery('PRAGMA table_info(accounts)');
+    expect(
+      accountColumns.map((column) => column['name']),
+      containsAll(['cash_flow_category', 'position_class']),
     );
 
     final journalColumns =
@@ -338,7 +345,7 @@ void main() {
     );
     try {
       await LocalDatabaseSchema.upgrade(db, 27);
-      await db.execute('PRAGMA user_version = 32');
+      await db.execute('PRAGMA user_version = 33');
       final legacy = (await db.query(
         'audit_log',
         where: 'action = ?',
@@ -352,7 +359,7 @@ void main() {
       expect(legacy['result'], 'legacy/unknown');
       expect(
         Sqflite.firstIntValue(await db.rawQuery('PRAGMA user_version')),
-        32,
+        33,
       );
       expect(await db.query('accounting_policy_settings'), isNotEmpty);
       await db.update(
@@ -367,9 +374,12 @@ void main() {
             whereArgs: ['accounting_policy_settings', 'db.update']),
         isNotEmpty,
       );
-      final journalColumns =
-          await db.rawQuery('PRAGMA table_info(journal_entries)');
-      expect(journalColumns.any((row) => row['name'] == 'due_date'), isTrue);
+      expect((await db.rawQuery('PRAGMA table_info(journal_entries)')).any(
+          (row) => row['name'] == 'due_date'), isTrue);
+      expect((await db.rawQuery('PRAGMA table_info(accounts)'))
+          .map((row) => row['name']), containsAll(['cash_flow_category', 'position_class']));
+      expect((await db.query('accounting_policy_settings'))
+          .map((row) => row['policy_key']), contains('comparative_period_basis'));
       final customerParty = (await db.query(
         'parties',
         where: 'type = ? AND name = ?',

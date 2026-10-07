@@ -29,6 +29,8 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
   late final TextEditingController opening;
   late AccountKind kind;
   late String currency;
+  late String cashFlowCategory;
+  late String positionClass;
   final selectedCurrencies = <String>{};
   Account? parent;
   late bool isGroup;
@@ -49,6 +51,8 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
     opening = TextEditingController(text: (account?.balance ?? 0).toString());
     kind = account?.kind ?? AccountKind.asset;
     currency = account?.currency ?? 'SAR';
+    cashFlowCategory = account?.cashFlowCategory ?? 'unclassified';
+    positionClass = account?.positionClass ?? 'unclassified';
     selectedCurrencies.addAll(account?.supportedCurrencies ?? [currency]);
     isGroup = account?.isGroup ?? false;
     final parentId = account?.parentId;
@@ -137,7 +141,7 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                   decoration:
                       const InputDecoration(labelText: 'الاسم بالإنجليزي')),
               DropdownButtonFormField<AccountKind>(
-                  value: kind,
+                  initialValue: kind,
                   decoration: const InputDecoration(labelText: 'نوع الحساب'),
                   items: AccountKind.values
                       .map((item) => DropdownMenuItem(
@@ -147,7 +151,7 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                       ? null
                       : (value) => setState(() => kind = value ?? kind)),
               DropdownButtonFormField<String>(
-                  value: currency,
+                  initialValue: currency,
                   decoration: const InputDecoration(
                       labelText: 'العملة الأساسية للترحيل'),
                   items: accountCurrencies
@@ -173,6 +177,56 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                             : selectedCurrencies.remove(item)),
                   ),
               ]),
+              DropdownButtonFormField<String>(
+                initialValue: cashFlowCategory,
+                decoration: const InputDecoration(
+                  labelText: 'تصنيف التدفق النقدي للحساب المقابل',
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: 'unclassified',
+                    child: Text('غير مصنف'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'operating',
+                    child: Text('تشغيلي'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'investing',
+                    child: Text('استثماري'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'financing',
+                    child: Text('تمويلي'),
+                  ),
+                ],
+                onChanged: saving
+                    ? null
+                    : (value) => setState(
+                        () => cashFlowCategory = value ?? 'unclassified'),
+              ),
+              DropdownButtonFormField<String>(
+                initialValue: positionClass,
+                decoration: const InputDecoration(
+                  labelText: 'تصنيف المركز المالي',
+                  helperText: 'ينطبق على الأصول والالتزامات فقط؛ غير المصنف يظل ظاهرًا.',
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: 'unclassified',
+                    child: Text('غير مصنف'),
+                  ),
+                  DropdownMenuItem(value: 'current', child: Text('جاري')),
+                  DropdownMenuItem(
+                    value: 'non_current',
+                    child: Text('غير جاري'),
+                  ),
+                ],
+                onChanged: saving
+                    ? null
+                    : (value) => setState(
+                        () => positionClass = value ?? 'unclassified'),
+              ),
               const SizedBox(height: 8),
               Autocomplete<Account>(
                 initialValue: TextEditingValue(
@@ -266,7 +320,9 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
           currency: currency,
           currencies: selectedCurrencies.toList(),
           balance: amount,
-          active: widget.account?.active ?? true));
+          active: widget.account?.active ?? true,
+          cashFlowCategory: cashFlowCategory,
+          positionClass: positionClass));
       if (mounted) Navigator.pop(context, true);
     } catch (error) {
       if (mounted) {
