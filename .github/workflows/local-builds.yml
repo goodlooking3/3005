@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: '3.47.5'
       - run: flutter pub get
       - name: Enforce source policies
         run: |
@@ -23,8 +23,29 @@ jobs:
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - name: Run tests
         run: flutter test --concurrency=1
-      - name: Build local Android 12+ arm64 APK
-        run: flutter build apk --release --target-platform android-arm64 --dart-define=WASEL_LOCAL_ONLY=true
+      - name: Configure ephemeral signing for local APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          password="$(openssl rand -hex 16)"
+          keytool -genkeypair -v \
+            -keystore android/local-build.jks \
+            -storepass "$password" \
+            -keypass "$password" \
+            -alias wasel-local \
+            -keyalg RSA -keysize 2048 -validity 3650 \
+            -dname "CN=Wasel Local Build, OU=Local, O=Wasel, C=YE"
+          cat > android/key.properties <<EOF
+          storeFile=../local-build.jks
+          storePassword=$password
+          keyPassword=$password
+          keyAlias=wasel-local
+          EOF
+      - name: Build local Android APK (minSdk 24+, universal)
+        run: flutter build apk --release --dart-define=WASEL_LOCAL_ONLY=true
+      - name: Remove ephemeral signing material
+        if: always()
+        run: rm -f android/key.properties android/local-build.jks
       - uses: actions/upload-artifact@v4
         with:
           name: wasel-local-android-apk
