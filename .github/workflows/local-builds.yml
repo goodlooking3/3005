@@ -43,13 +43,56 @@ jobs:
           EOF
       - name: Build local Android APK (minSdk 24+, universal)
         run: flutter build apk --release --dart-define=WASEL_LOCAL_ONLY=true
+      - name: Preserve universal APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/apk-artifacts/universal
+          cp build/app/outputs/flutter-apk/app-release.apk build/apk-artifacts/universal/Wasel-Android-universal-API24.apk
+          sha256sum build/apk-artifacts/universal/Wasel-Android-universal-API24.apk | awk '{print $1}' > build/apk-artifacts/universal/Wasel-Android-universal-API24.apk.sha256
+      - name: Build local Android APK for ARM32 (armeabi-v7a)
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f build/app/outputs/flutter-apk/*.apk
+          flutter build apk --release --target-platform android-arm --dart-define=WASEL_LOCAL_ONLY=true
+          mapfile -t apk_candidates < <(find build/app/outputs/flutter-apk -maxdepth 1 -type f -name '*.apk' -print)
+          if [ "${#apk_candidates[@]}" -ne 1 ]; then
+            printf 'Expected exactly one ARM32 APK, found %s\n' "${#apk_candidates[@]}" >&2
+            exit 1
+          fi
+          mkdir -p build/apk-artifacts/arm32
+          cp "${apk_candidates[0]}" build/apk-artifacts/arm32/Wasel-Android-arm32-API24.apk
+          sha256sum build/apk-artifacts/arm32/Wasel-Android-arm32-API24.apk | awk '{print $1}' > build/apk-artifacts/arm32/Wasel-Android-arm32-API24.apk.sha256
+          python3 - <<'PY'
+          import zipfile
+          apk = 'build/apk-artifacts/arm32/Wasel-Android-arm32-API24.apk'
+          with zipfile.ZipFile(apk) as archive:
+              names = set(archive.namelist())
+          required = {
+              'lib/armeabi-v7a/libapp.so',
+              'lib/armeabi-v7a/libflutter.so',
+              'lib/armeabi-v7a/libsqlite3.so',
+          }
+          missing = required - names
+          if missing:
+              raise SystemExit(f'Missing ARM32 app/Flutter/SQLite libraries: {sorted(missing)}')
+          other_abis = [n for n in names if n.startswith(('lib/arm64-v8a/', 'lib/x86_64/'))]
+          if other_abis:
+              raise SystemExit(f'Unexpected non-ARM32 native libraries: {other_abis[:5]}')
+          print('Verified ARM32 app, Flutter engine, and SQLite library; no ARM64/x86_64 libraries included.')
+          PY
       - name: Remove ephemeral signing material
         if: always()
         run: rm -f android/key.properties android/local-build.jks
       - uses: actions/upload-artifact@v4
         with:
           name: wasel-local-android-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/apk-artifacts/universal/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wasel-local-android-arm32-apk
+          path: build/apk-artifacts/arm32/*
 
   windows-local:
     runs-on: windows-latest
