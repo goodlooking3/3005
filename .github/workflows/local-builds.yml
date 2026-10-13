@@ -68,13 +68,15 @@ jobs:
           dart run tool/check_sqlite_singleton.dart
       - name: Analyze source
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Test Windows device fingerprint
+        run: flutter test --no-pub --concurrency=1 test/windows_device_id_test.dart
       - name: Build local Windows 10+ x64 bundle
         run: flutter build windows --release --dart-define=WASEL_LOCAL_ONLY=true
       - name: Package Windows bundle
         shell: pwsh
         run: |
           $source = "build/windows/x64/runner/Release"
-          $archive = "wasel-windows-local-x64.zip"
+          $archive = "wasel-windows10-x64-offline-license.zip"
           Compress-Archive -Path "$source\*" -DestinationPath $archive -Force
           (Get-FileHash $archive -Algorithm SHA256).Hash | Out-File "${archive}.sha256" -Encoding ascii
       - name: Install Inno Setup
@@ -89,8 +91,8 @@ jobs:
           (Get-FileHash $setup.FullName -Algorithm SHA256).Hash | Out-File "$($setup.FullName).sha256" -Encoding ascii
       - uses: actions/upload-artifact@v4
         with:
-          name: wasel-local-windows-bundle
+          name: wasel-windows10-x64-offline-license
           path: |
-            wasel-windows-local-x64.zip
-            wasel-windows-local-x64.zip.sha256
+            wasel-windows10-x64-offline-license.zip
+            wasel-windows10-x64-offline-license.zip.sha256
             windows/installer-output/*

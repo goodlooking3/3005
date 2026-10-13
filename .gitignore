@@ -11,3 +11,8 @@ build/
 .env
 *.db
 *.xlsx
+# Offline device-license secrets and issued files must stay out of Git.
+issuer-seed.hex
+issued-licenses.json
+wasel-license.json
+*.wasel-license.json

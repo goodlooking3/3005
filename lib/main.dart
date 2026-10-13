@@ -1,7 +1,8 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, kIsWeb, TargetPlatform;
+    show defaultTargetPlatform, kIsWeb, kReleaseMode, TargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'core/accounting.dart';
 import 'core/models.dart';
@@ -12,6 +13,7 @@ import 'data/accounting_repository.dart';
 import 'data/currency_repository.dart';
 import 'services/account_import_service.dart';
 import 'services/auth_service.dart';
+import 'services/device_license_service.dart';
 import 'services/secure_backup_service.dart';
 import 'core/design_system.dart';
 import 'features/connectors/presentation/connector_center_screen.dart';
@@ -43,6 +45,7 @@ part 'home_shell_account_actions_part.dart';
 part 'home_shell_web_review_part.dart';
 part 'sidebar_part.dart';
 part 'auth_part.dart';
+part 'device_license_part.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -60,7 +63,7 @@ class WaselApp extends StatelessWidget {
         theme: waselTheme(),
         home: const Directionality(
           textDirection: TextDirection.rtl,
-          child: AuthGate(),
+          child: DeviceLicenseGate(child: AuthGate()),
         ),
       );
 }
